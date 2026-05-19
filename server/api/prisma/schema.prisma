@@ -1,0 +1,366 @@
+// Prisma Schema — Supplements E-Commerce
+// All models use English names. Database tables use snake_case via @@map.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ────────────────────────────────────────────
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  RETURN_REQUESTED
+  RETURNED
+}
+
+enum InvoiceStatus {
+  NOT_ISSUED
+  ISSUED
+  PAID
+}
+
+enum ReturnType {
+  DEFECTIVE_PRODUCT
+  CHANGE_OF_MIND
+  WRONG_PRODUCT
+  OTHER
+}
+
+enum ReturnStatus {
+  AWAITING_APPROVAL
+  APPROVED
+  REJECTED
+  AWAITING_SHIPMENT
+  PRODUCT_RECEIVED
+  REFUND_RECEIVED
+  COMPLETED
+}
+
+enum SubscriptionStatus {
+  PENDING      // creada, esperando pago inicial del cliente en MP
+  AUTHORIZED   // activa, MP cobra automáticamente
+  PAUSED       // pausada por MP (ej. tarjeta expirada)
+  CANCELLED    // cancelada por usuario o admin
+}
+
+// ─── MODELS ───────────────────────────────────────────
+
+/// User — registered customer account
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String                        // bcrypt hash
+  firstName String
+  lastName  String
+  phone     String?  @default("")
+  address   String?  @default("") @db.Text
+  city      String?  @default("")
+  state     String?  @default("")
+  zipCode   String?  @default("")
+
+  orders        Order[]
+  reviews       Review[]
+  subscriptions Subscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+/// Product — a supplement item for sale
+model Product {
+  id             String   @id @default(uuid())
+  slug           String   @unique          // SEO-friendly URL: "whey-protein-2kg"
+  name           String
+  price          Decimal  @db.Decimal(10, 2)
+  discountPrice  Decimal? @db.Decimal(10, 2)
+
+  weight         Decimal  @default(1) @db.Decimal(10, 2)  // shipping weight (kg)
+  description    String?  @db.Text
+  imageUrl       String?                   // main product image URL
+  active         Boolean  @default(true)
+
+  // Feature flags — for manual curation on homepage sections
+  featured       Boolean  @default(false)  // "Featured Products"
+  onSale         Boolean  @default(false)  // "On Sale" badge
+  isNew          Boolean  @default(false)  // "New Arrival"
+  bestSeller     Boolean  @default(false)  // "Best Sellers"
+
+  // Analytics counters
+  viewCount      Int      @default(0)
+  salesCount     Int      @default(0)
+
+  // Stock
+  stockQuantity  Int      @default(0)
+
+  // Subscription fields — define automatic billing frequency
+  servingsPerContainer Int?              // porciones por envase
+  dailyServings        Int?  @default(1) // porciones por día recomendadas
+
+  // Relations
+  categoryId     String?
+  category       Category?  @relation(fields: [categoryId], references: [id])
+
+  brandId        String?
+  brand          Brand?     @relation(fields: [brandId], references: [id])
+
+  flavors        String[]                  // e.g. ["Chocolate", "Vainilla", "Fresa"]
+
+  images         ProductImage[]
+  orderItems     OrderItem[]
+  reviews        Review[]
+  subscriptions  Subscription[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([name])
+  @@index([featured, onSale, isNew, bestSeller])
+  @@index([salesCount])
+  @@index([viewCount])
+  @@map("products")
+}
+
+/// ProductImage — additional images for a product
+model ProductImage {
+  id        String   @id @default(uuid())
+  url       String
+  sortOrder Int      @default(0)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("product_images")
+}
+
+/// Review — a customer product review (only verified buyers can post)
+model Review {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int                             // 1–5 stars
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@unique([productId, userId])            // one review per user per product
+  @@map("reviews")
+}
+
+/// Brand — supplement brand (e.g. Optimum Nutrition, MyProtein)
+model Brand {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  slug      String   @unique
+  logoUrl   String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+
+  products  Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("brands")
+}
+
+/// Category — product categories with parent/child hierarchy
+model Category {
+  id            String     @id @default(uuid())
+  name          String
+  slug          String     @unique
+  image         String?
+  sortOrder     Int        @default(0)
+  active        Boolean    @default(true)
+
+  // Self-referencing relation for subcategories
+  parentId      String?
+  parent        Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children      Category[] @relation("CategoryHierarchy")
+
+  products      Product[]
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("categories")
+}
+
+/// Order — a customer purchase (guest or authenticated)
+model Order {
+  id              String        @id @default(uuid())
+  orderNumber     String        @unique       // e.g. "SUP-20260301-ABC12"
+  trackingToken   String?       @unique       // secure UUID for order tracking links
+  totalAmount     Decimal       @db.Decimal(10, 2)
+  shippingCost    Decimal       @default(0) @db.Decimal(10, 2)
+  shippingTrackNo String?                     // carrier tracking number
+  shippingCarrier String?                     // carrier name
+  status          OrderStatus   @default(PENDING)
+  invoiceStatus   InvoiceStatus @default(NOT_ISSUED)
+  invoiceNumber   String?
+  invoiceDate     DateTime?
+
+  // Registered user (optional — null for guest checkout)
+  userId          String?
+  user            User?         @relation(fields: [userId], references: [id])
+
+  // Customer info (snapshot at purchase time)
+  email           String
+  firstName       String
+  lastName        String
+  phone           String
+  address         String        @db.Text
+  city            String
+  state           String                      // district/province
+  zipCode         String
+  country         String        @default("Mexico")
+
+  // Corporate invoice info
+  isCorporate     Boolean       @default(false)
+  companyName     String?
+  taxOffice       String?
+  taxId           String?
+
+  // Payment
+  paymentId       String?       @unique
+  paymentToken    String?       @unique
+  paymentStatus   String?       @default("INIT")
+
+  deliveryDate    DateTime?     // for return window calculation
+
+  items           OrderItem[]
+  history         OrderHistory[]
+  returnRequest   ReturnRequest?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([email])
+  @@index([orderNumber])
+  @@index([trackingToken])
+  @@map("orders")
+}
+
+/// OrderItem — a line in an order (product + qty + price snapshot)
+model OrderItem {
+  id                String  @id @default(uuid())
+  orderId           String
+  order             Order   @relation(fields: [orderId], references: [id])
+
+  productId         String?
+  product           Product? @relation(fields: [productId], references: [id])
+  quantity          Int
+  unitPrice         Decimal  @db.Decimal(10, 2)
+  productNameSnap   String                    // snapshot of product name at purchase time
+  productPriceSnap  Decimal  @db.Decimal(10, 2) // snapshot of original price
+  totalPrice        Decimal  @db.Decimal(10, 2) // quantity * unitPrice
+
+  @@map("order_items")
+}
+
+/// OrderHistory — audit trail of order status changes
+model OrderHistory {
+  id          String       @id @default(uuid())
+  orderId     String
+  order       Order        @relation(fields: [orderId], references: [id])
+  oldStatus   OrderStatus?
+  newStatus   OrderStatus
+  note        String?
+  performedBy String       @default("SYSTEM")
+  createdAt   DateTime     @default(now())
+
+  @@map("order_history")
+}
+
+/// ReturnRequest — customer return/refund request
+model ReturnRequest {
+  id            String       @id @default(uuid())
+  orderId       String       @unique
+  order         Order        @relation(fields: [orderId], references: [id])
+
+  type          ReturnType
+  description   String       @db.Text
+  photoUrls     String[]                    // evidence photos
+  imageUrl      String?
+
+  // Admin fields
+  returnCode    String?                     // manual return label code
+  carrier       String?
+  adminNote     String?
+
+  status        ReturnStatus @default(AWAITING_APPROVAL)
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@map("return_requests")
+}
+
+/// SystemSettings — global app configuration (singleton row)
+model SystemSettings {
+  id                    String   @id @default("global-settings")
+  shippingWeightFactor  Decimal  @default(0) @db.Decimal(10, 2)
+  warehouseWeightLimit  Int      @default(0)
+  freeShippingThreshold Decimal? @default(0) @db.Decimal(10, 2)
+  shippingPriceList     Json?    // [{maxWeight: 1, price: 50}, ...]
+  maintenanceMode       Boolean  @default(false)
+  updatedAt             DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// ─── SUBSCRIPTION MODELS ──────────────────────────────
+
+/// Subscription — recurring product delivery subscription via MP Preapproval
+model Subscription {
+  id               String             @id @default(uuid())
+  mpPreapprovalId  String?            @unique   // ID de MP (set after preapproval creation)
+  productId        String
+  product          Product            @relation(fields: [productId], references: [id])
+  userId           String
+  user             User               @relation(fields: [userId], references: [id])
+  status           SubscriptionStatus @default(PENDING)
+  quantity         Int                @default(1)
+  billingDays      Int                // servingsPerContainer - 3
+  amount           Decimal            @db.Decimal(10, 2)  // precio al suscribirse
+  nextBillingDate  DateTime?
+  // Snapshot de envío al momento de suscribirse
+  email            String
+  firstName        String
+  lastName         String
+  phone            String
+  address          String             @db.Text
+  city             String
+  state            String
+  zipCode          String
+  payments         SubscriptionPayment[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@map("subscriptions")
+}
+
+/// SubscriptionPayment — individual recurring payment record
+model SubscriptionPayment {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  mpPaymentId    String       @unique
+  status         String       // "authorized", "charged", "failed"
+  amount         Decimal      @db.Decimal(10, 2)
+  createdAt      DateTime     @default(now())
+
+  @@map("subscription_payments")
+}
