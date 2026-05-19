@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Mail, Phone } from 'lucide-react';
 
 /**
- * Footer — dark background (#111111), logo KAS, links, contacto y legal.
+ * Footer — dark background (#111111), logo, links, contacto y legal.
  */
 export default function Footer() {
     const year = new Date().getFullYear();
@@ -14,10 +14,10 @@ export default function Footer() {
 
                     {/* Brand — logo + tagline */}
                     <div className="sm:col-span-2 md:col-span-1">
-                        <Link to="/" className="inline-block mb-4" aria-label="KAS Supplements - Inicio">
+                        <Link to="/" className="inline-block mb-4" aria-label="Inicio">
                             <img
                                 src="/images/logo.png"
-                                alt="KAS Supplements"
+                                alt="Logo"
                                 className="h-8 w-auto object-contain"
                             />
                         </Link>
@@ -75,7 +75,7 @@ export default function Footer() {
 
                 {/* Bottom bar */}
                 <div className="border-t border-brand-border mt-8 pt-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-600">
-                    <p>© {year} KAS Supplements. Todos los derechos reservados.</p>
+                    <p>© {year} Todos los derechos reservados.</p>
                     <div className="flex gap-4">
                         <Link to="/privacidad" className="hover:text-gray-400 transition-colors">
                             Privacidad

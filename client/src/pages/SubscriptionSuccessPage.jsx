@@ -11,7 +11,7 @@ import SEO from '../components/SEO.jsx';
 export default function SubscriptionSuccessPage() {
     return (
         <>
-            <SEO title="Suscripción creada | KAS Supplements" />
+            <SEO title="Suscripción creada" />
             <div className="min-h-screen bg-kas-bg flex items-center justify-center py-12 px-4">
                 <div className="max-w-lg w-full text-center">
 

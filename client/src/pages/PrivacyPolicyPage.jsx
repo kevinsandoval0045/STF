@@ -14,7 +14,7 @@ export default function PrivacyPolicyPage() {
         <>
             <SEO
                 title="Aviso de Privacidad"
-                description="Conoce cómo KAS Supplements recopila, usa y protege tus datos personales conforme a la Ley Federal de Protección de Datos Personales en Posesión de los Particulares."
+                description="Conoce cómo recopilamos, usamos y protegemos tus datos personales conforme a la Ley Federal de Protección de Datos Personales en Posesión de los Particulares."
             />
 
             <div className="container-main py-12 max-w-3xl">
@@ -29,7 +29,7 @@ export default function PrivacyPolicyPage() {
                             1. Responsable del tratamiento de sus datos personales
                         </h2>
                         <p>
-                            <strong>KAS Supplements</strong> (en adelante "KAS Supplements", "nosotros" o "la Empresa"),
+                            <strong>la Empresa</strong> (en adelante "la Empresa", "nosotros" o "la Empresa"),
                             con domicilio en México, es responsable del tratamiento de sus datos personales
                             de conformidad con lo establecido en la{' '}
                             <em>Ley Federal de Protección de Datos Personales en Posesión de los Particulares</em>{' '}
@@ -56,7 +56,7 @@ export default function PrivacyPolicyPage() {
                             <li><strong>Identificación:</strong> nombre, apellidos.</li>
                             <li><strong>Contacto:</strong> correo electrónico, número de teléfono.</li>
                             <li><strong>Domicilio:</strong> dirección de entrega, ciudad, estado y código postal.</li>
-                            <li><strong>Financieros:</strong> información de pago procesada de forma segura a través de Mercado Pago; KAS Supplements <strong>no almacena</strong> datos de tarjeta bancaria.</li>
+                            <li><strong>Financieros:</strong> información de pago procesada de forma segura a través de Mercado Pago; la Empresa <strong>no almacena</strong> datos de tarjeta bancaria.</li>
                             <li><strong>Navegación:</strong> dirección IP, tipo de navegador y páginas visitadas (de forma anónima y agregada, con fines estadísticos).</li>
                         </ul>
                         <p className="mt-2">
@@ -124,7 +124,7 @@ export default function PrivacyPolicyPage() {
                             5. Transferencia de datos personales
                         </h2>
                         <p>
-                            KAS Supplements podrá compartir sus datos con los siguientes terceros,
+                            La Empresa podrá compartir sus datos con los siguientes terceros,
                             únicamente para las finalidades indicadas:
                         </p>
                         <ul className="list-disc list-inside mt-2 space-y-1">

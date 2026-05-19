@@ -7,7 +7,7 @@ export default {
     theme: {
         extend: {
             colors: {
-                // ── KAS Supplements Design System ──────────────────
+                // ── Design System ───────────────────────────────────
                 brand: {
                     red:        '#E02424',   // Primary CTA, precios, accents
                     'red-dark': '#B91C1C',   // Hover de botones rojos

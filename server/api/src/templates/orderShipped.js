@@ -42,7 +42,7 @@ export function orderShippedTemplate({ firstName, orderNumber, trackingToken, sh
           <tr>
             <td style="background:#111827;padding:28px 32px;text-align:center;">
               <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">
-                <span style="color:#E02424;">KAS</span> Supplements
+                Tienda de Suplementos
               </h1>
             </td>
           </tr>
@@ -75,7 +75,7 @@ export function orderShippedTemplate({ firstName, orderNumber, trackingToken, sh
           <tr>
             <td style="background:#f9fafb;padding:20px 32px;border-top:1px solid #e5e7eb;text-align:center;">
               <p style="margin:0;font-size:12px;color:#9ca3af;">
-                KAS Supplements &bull; Si tienes dudas responde este correo.
+                Tienda de Suplementos &bull; Si tienes dudas responde este correo.
               </p>
             </td>
           </tr>

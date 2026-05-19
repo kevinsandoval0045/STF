@@ -8,7 +8,7 @@ export function subscriptionCancelledTemplate({ firstName, productName, billingD
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Suscripción cancelada — KAS Supplements</title>
+  <title>Suscripción cancelada</title>
 </head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:Inter,Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 16px;">
@@ -18,7 +18,7 @@ export function subscriptionCancelledTemplate({ firstName, productName, billingD
         <!-- Header -->
         <tr>
           <td style="background:#1f2937;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:800;letter-spacing:-0.5px;">KAS Supplements</h1>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:800;letter-spacing:-0.5px;">Tienda de Suplementos</h1>
             <p style="margin:8px 0 0;color:#9ca3af;font-size:14px;">Confirmación de cancelación</p>
           </td>
         </tr>
@@ -65,7 +65,7 @@ export function subscriptionCancelledTemplate({ firstName, productName, billingD
         <tr>
           <td style="background:#f9fafb;padding:24px 40px;text-align:center;border-top:1px solid #f3f4f6;">
             <p style="margin:0;color:#9ca3af;font-size:12px;">
-              © 2025 KAS Supplements · Todos los derechos reservados
+              © 2025 Todos los derechos reservados
             </p>
           </td>
         </tr>

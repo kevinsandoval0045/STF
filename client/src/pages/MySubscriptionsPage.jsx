@@ -77,7 +77,7 @@ export default function MySubscriptionsPage() {
 
     return (
         <>
-            <SEO title="Mis Suscripciones | KAS Supplements" />
+            <SEO title="Mis Suscripciones" />
             <div className="min-h-screen bg-kas-bg py-8">
                 <div className="container-main max-w-4xl">
 

@@ -24,6 +24,7 @@ const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage.jsx'));
 const TermsPage = lazy(() => import('./pages/TermsPage.jsx'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage.jsx'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage.jsx'));
+const SearchResultsPage = lazy(() => import('./pages/SearchResultsPage.jsx'));
 
 /**
  * Full-page loading spinner shown while lazy chunks download.
@@ -76,6 +77,7 @@ function App() {
                             <Suspense fallback={<PageLoader />}>
                                 <Routes>
                                     <Route path="/" element={<Home />} />
+                                    <Route path="/buscar" element={<SearchResultsPage />} />
                                     <Route path="/categoria/:slug" element={<CategoryPage />} />
                                     <Route path="/product/:slug" element={<ProductDetail />} />
                                     <Route path="/checkout" element={<CheckoutPage />} />

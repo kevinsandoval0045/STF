@@ -169,7 +169,7 @@ export default function SubscriptionCheckoutPage() {
 
     return (
         <>
-            <SEO title={`Suscripción — ${product?.name} | KAS Supplements`} />
+            <SEO title={`Suscripción — ${product?.name}`} />
             <div className="min-h-screen bg-kas-bg py-8">
                 <div className="container-main max-w-5xl">
 

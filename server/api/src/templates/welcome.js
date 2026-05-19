@@ -12,7 +12,7 @@ export function welcomeTemplate({ firstName }) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bienvenido a KAS Supplements</title>
+  <title>Bienvenido a nuestra tienda</title>
 </head>
 <body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 0;">
@@ -24,7 +24,7 @@ export function welcomeTemplate({ firstName }) {
           <tr>
             <td style="background:#111827;padding:28px 32px;text-align:center;">
               <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">
-                <span style="color:#E02424;">KAS</span> Supplements
+                Tienda de Suplementos
               </h1>
             </td>
           </tr>
@@ -81,7 +81,7 @@ export function welcomeTemplate({ firstName }) {
           <tr>
             <td style="background:#f9fafb;padding:20px 32px;border-top:1px solid #e5e7eb;text-align:center;">
               <p style="margin:0;font-size:12px;color:#9ca3af;">
-                KAS Supplements &bull; Si no creaste esta cuenta, ignora este correo.
+                Tienda de Suplementos &bull; Si no creaste esta cuenta, ignora este correo.
               </p>
             </td>
           </tr>

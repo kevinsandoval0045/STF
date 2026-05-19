@@ -1,7 +1,7 @@
 import SEO from '../components/SEO.jsx';
 
 /**
- * TermsPage — Términos y Condiciones de uso de KAS Supplements.
+ * TermsPage — Términos y Condiciones de uso.
  * Conforme a PROFECO y legislación de comercio electrónico en México.
  * Última actualización: Mayo 2026.
  */
@@ -10,7 +10,7 @@ export default function TermsPage() {
         <>
             <SEO
                 title="Términos y Condiciones"
-                description="Lee los Términos y Condiciones de uso de KAS Supplements, incluyendo políticas de compra, envío, devoluciones y suscripciones recurrentes."
+                description="Lee los Términos y Condiciones de uso de nuestra tienda, incluyendo políticas de compra, envío, devoluciones y suscripciones recurrentes."
             />
 
             <div className="container-main py-12 max-w-3xl">
@@ -23,7 +23,7 @@ export default function TermsPage() {
                     <section>
                         <h2 className="text-lg font-semibold text-kas-text mb-3">1. Aceptación de los Términos</h2>
                         <p>
-                            Al acceder y utilizar el sitio web de <strong>KAS Supplements</strong> (en adelante
+                            Al acceder y utilizar el sitio web de <strong>la Empresa</strong> (en adelante
                             "el Sitio"), así como al realizar cualquier compra o suscripción a través de él,
                             usted acepta de forma expresa y vinculante los presentes Términos y Condiciones,
                             así como nuestro{' '}
@@ -44,7 +44,7 @@ export default function TermsPage() {
                                 el Impuesto al Valor Agregado (IVA) cuando corresponda.
                             </li>
                             <li>
-                                KAS Supplements se reserva el derecho de modificar los precios en cualquier
+                                La Empresa se reserva el derecho de modificar los precios en cualquier
                                 momento sin previo aviso. El precio aplicable a su compra es el vigente al
                                 momento de confirmar el pago.
                             </li>
@@ -63,7 +63,7 @@ export default function TermsPage() {
                     {/* 3. Proceso de compra */}
                     <section>
                         <h2 className="text-lg font-semibold text-kas-text mb-3">3. Proceso de Compra y Pago</h2>
-                        <p>El proceso de compra en KAS Supplements sigue los siguientes pasos:</p>
+                        <p>El proceso de compra en nuestra tienda sigue los siguientes pasos:</p>
                         <ol className="list-decimal list-inside mt-2 space-y-1">
                             <li>Selección de productos y adición al carrito.</li>
                             <li>Ingreso de datos de envío y contacto.</li>
@@ -72,12 +72,12 @@ export default function TermsPage() {
                         </ol>
                         <p className="mt-3">
                             El pago se procesa de forma segura a través de <strong>Mercado Pago</strong>.
-                            KAS Supplements no almacena datos de tarjetas bancarias. Al completar el pago,
+                            La Empresa no almacena datos de tarjetas bancarias. Al completar el pago,
                             usted acepta los términos del procesador de pago correspondiente.
                         </p>
                         <p className="mt-2">
                             Un pedido se considera confirmado únicamente cuando reciba el correo electrónico
-                            de confirmación. KAS Supplements se reserva el derecho de cancelar pedidos en
+                            de confirmación. La Empresa se reserva el derecho de cancelar pedidos en
                             caso de errores de precio, fraude detectado o falta de stock.
                         </p>
                     </section>
@@ -100,7 +100,7 @@ export default function TermsPage() {
                                 y la paquetería seleccionada.
                             </li>
                             <li>
-                                KAS Supplements no se hace responsable por retrasos ocasionados por la
+                                La Empresa no se hace responsable por retrasos ocasionados por la
                                 empresa de paquetería, causas de fuerza mayor o datos de envío incorrectos
                                 proporcionados por el cliente.
                             </li>
@@ -153,7 +153,7 @@ export default function TermsPage() {
                             6. Suscripciones Recurrentes
                         </h2>
                         <p>
-                            KAS Supplements ofrece un servicio de suscripción recurrente que permite recibir
+                            La Empresa ofrece un servicio de suscripción recurrente que permite recibir
                             sus productos favoritos de forma automática y periódica.
                         </p>
                         <ul className="list-disc list-inside mt-2 space-y-1">
@@ -176,7 +176,7 @@ export default function TermsPage() {
                                 automáticamente un <strong>descuento del 5%</strong> como beneficio de lealtad.
                             </li>
                             <li>
-                                KAS Supplements se reserva el derecho de modificar los precios de
+                                La Empresa se reserva el derecho de modificar los precios de
                                 suscripción con un aviso previo de <strong>15 días naturales</strong>
                                 por correo electrónico.
                             </li>
@@ -196,7 +196,7 @@ export default function TermsPage() {
                                 y de todas las actividades realizadas desde su cuenta.
                             </li>
                             <li>
-                                KAS Supplements se reserva el derecho de suspender o cancelar cuentas que
+                                La Empresa se reserva el derecho de suspender o cancelar cuentas que
                                 incurran en uso fraudulento, abusivo o contrario a estos Términos.
                             </li>
                         </ul>
@@ -207,14 +207,14 @@ export default function TermsPage() {
                         <h2 className="text-lg font-semibold text-kas-text mb-3">8. Propiedad Intelectual</h2>
                         <p>
                             Todos los contenidos del Sitio — incluyendo textos, imágenes, logotipos,
-                            diseños, código fuente y elementos gráficos — son propiedad de KAS Supplements
+                            diseños, código fuente y elementos gráficos — son propiedad de la Empresa
                             o de sus respectivos titulares, y están protegidos por las leyes mexicanas e
                             internacionales de propiedad intelectual.
                         </p>
                         <p className="mt-2">
                             Queda prohibida la reproducción, distribución, modificación o uso comercial
                             de cualquier contenido del Sitio sin autorización expresa y por escrito de
-                            KAS Supplements.
+                            la Empresa.
                         </p>
                     </section>
 
@@ -224,13 +224,13 @@ export default function TermsPage() {
                             9. Limitación de Responsabilidad
                         </h2>
                         <p>
-                            KAS Supplements no será responsable por daños directos, indirectos, incidentales
+                            La Empresa no será responsable por daños directos, indirectos, incidentales
                             o consecuentes derivados del uso o imposibilidad de uso del Sitio, siempre que
                             dichos daños no sean atribuibles a dolo o negligencia grave de nuestra parte.
                         </p>
                         <p className="mt-2">
                             Los suplementos alimenticios no sustituyen una dieta equilibrada ni el tratamiento
-                            médico profesional. KAS Supplements no asume responsabilidad por el uso inadecuado
+                            médico profesional. La Empresa no asume responsabilidad por el uso inadecuado
                             de los productos adquiridos.
                         </p>
                     </section>
@@ -249,7 +249,7 @@ export default function TermsPage() {
                         </p>
                         <p className="mt-2">
                             Para cualquier controversia derivada de estos Términos, las partes se someten
-                            a la jurisdicción de los tribunales competentes en el domicilio de KAS Supplements,
+                            a la jurisdicción de los tribunales competentes en el domicilio de la Empresa,
                             renunciando a cualquier otro fuero que pudiera corresponderles.
                         </p>
                         <p className="mt-2">

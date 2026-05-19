@@ -42,7 +42,7 @@ export default function Home() {
         '@graph': [
             {
                 '@type': 'WebSite',
-                name: 'KAS Supplements',
+                name: 'Tienda de Suplementos',
                 url: window.location.origin,
                 potentialAction: {
                     '@type': 'SearchAction',
@@ -107,7 +107,7 @@ export default function Home() {
 
             {/* ─── Hero Section ───────────────────────────────────── */}
             <section
-                aria-label="Bienvenida KAS Supplements"
+                aria-label="Sección de bienvenida"
                 style={{
                     background: '#111111',
                     position: 'relative',

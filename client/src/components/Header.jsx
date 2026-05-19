@@ -18,10 +18,12 @@ export default function Header() {
     const handleSearch = (e) => {
         e.preventDefault();
         if (searchQuery.trim()) {
-            navigate(`/?search=${encodeURIComponent(searchQuery.trim())}`);
+            navigate(`/buscar?q=${encodeURIComponent(searchQuery.trim())}`);
+            setSearchQuery('');
             setMobileMenuOpen(false);
         }
     };
+
 
     return (
         <header className="sticky top-0 z-50 bg-brand-dark shadow-xl border-b border-brand-border">
@@ -29,10 +31,10 @@ export default function Header() {
                 <div className="flex items-center justify-between h-16">
 
                     {/* Logo */}
-                    <Link to="/" className="flex items-center shrink-0" aria-label="KAS Supplements - Inicio">
+                    <Link to="/" className="flex items-center shrink-0" aria-label="Inicio">
                         <img
                             src="/images/logo.png"
-                            alt="KAS Supplements"
+                            alt="Logo"
                             className="h-9 w-auto object-contain"
                         />
                     </Link>
