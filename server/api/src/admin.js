@@ -371,7 +371,7 @@ const ConnectSession = Connect(session);
 const sessionStore = new ConnectSession({
   conObject: {
     connectionString: config.databaseUrl,
-    ssl: config.nodeEnv === 'production',
+    ssl: config.nodeEnv === 'production' ? { rejectUnauthorized: false } : false,
   },
   tableName: 'session',
   createTableIfMissing: true,
