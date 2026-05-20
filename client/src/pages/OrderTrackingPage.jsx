@@ -4,6 +4,8 @@ import { formatPrice, formatDate } from '../utils/formatters.js';
 import { Search, Package, Loader2, MapPin, Clock, FileDown } from 'lucide-react';
 import SEO from '../components/SEO.jsx';
 
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+
 /**
  * OrderTrackingPage — allows customers to track their order
  * by entering the tracking token.
@@ -99,7 +101,7 @@ export default function OrderTrackingPage() {
                                 </span>
                                 {/* Download PDF receipt button */}
                                 <a
-                                    href={`/api/v1/orders/receipt/${token}`}
+                                    href={`${API_BASE}/orders/receipt/${token}`}
                                     download={`comprobante-${order.orderNumber}.pdf`}
                                     target="_blank"
                                     rel="noopener noreferrer"
