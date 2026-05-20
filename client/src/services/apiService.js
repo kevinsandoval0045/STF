@@ -75,6 +75,11 @@ export const getProductBySlug = async (slug) => {
     return data;
 };
 
+export const getProductById = async (id) => {
+    const { data } = await api.get(`/products/id/${id}`);
+    return data;
+};
+
 // ─── Categories ────────────────────────────────────────
 
 export const getCategories = async () => {

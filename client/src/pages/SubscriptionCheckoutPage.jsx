@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
-import { createSubscription, updateProfile } from '../services/apiService.js';
+import { createSubscription, updateProfile, getProductById } from '../services/apiService.js';
 import { formatPrice } from '../utils/formatters.js';
 import {
     Loader2, RefreshCw, Truck, ShieldCheck, Calendar,
@@ -69,15 +69,11 @@ export default function SubscriptionCheckoutPage() {
         const fetchProduct = async () => {
             try {
                 setLoading(true);
-                const res = await fetch(`/api/v1/products/id/${productId}`);
-                if (!res.ok) {
-                    setError(res.status === 404 ? 'Producto no encontrado' : 'Error al cargar el producto');
-                    return;
-                }
-                const data = await res.json();
+                const data = await getProductById(productId);
                 setProduct(data);
-            } catch {
-                setError('Error al cargar el producto');
+            } catch (err) {
+                const status = err.response?.status;
+                setError(status === 404 ? 'Producto no encontrado' : 'Error al cargar el producto');
             } finally {
                 setLoading(false);
             }
