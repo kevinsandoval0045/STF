@@ -33,12 +33,26 @@ function parseFlavorsPayload(raw) {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean);
   if (typeof raw === 'string') {
-    // Remove surrounding brackets if present: "[chocolate, vanilla]" → "chocolate, vanilla"
     const cleaned = raw.trim().replace(/^\[|\]$/g, '');
     if (!cleaned) return [];
     return cleaned.split(',').map((s) => s.trim()).filter(Boolean);
   }
   return [];
+}
+
+/**
+ * Generate a URL-friendly slug from a product name.
+ * e.g. "Whey Protein 2kg" → "whey-protein-2kg"
+ */
+function slugify(text) {
+  return String(text)
+    .toLowerCase()
+    .normalize('NFD')                      // decompose accented chars
+    .replace(/[\u0300-\u036f]/g, '')       // strip diacritics
+    .replace(/[^a-z0-9\s-]/g, '')         // keep alphanumeric, spaces, hyphens
+    .trim()
+    .replace(/\s+/g, '-')                  // spaces → hyphens
+    .replace(/-+/g, '-');                  // collapse multiple hyphens
 }
 
 // ─── 3. AdminJS Instance ──────────────────────────────────────────────────────
@@ -143,6 +157,12 @@ const admin = new AdminJS({
             before: async (request) => {
               if (request.payload) {
                 request.payload.flavors = parseFlavorsPayload(request.payload.flavors);
+                // Auto-generate slug from name if not provided
+                if (!request.payload.slug && request.payload.name) {
+                  const base = slugify(request.payload.name);
+                  const suffix = Math.random().toString(36).slice(2, 6);
+                  request.payload.slug = `${base}-${suffix}`;
+                }
               }
               return request;
             },
@@ -151,6 +171,10 @@ const admin = new AdminJS({
             before: async (request) => {
               if (request.payload) {
                 request.payload.flavors = parseFlavorsPayload(request.payload.flavors);
+                // Auto-generate slug from name if slug was cleared
+                if (!request.payload.slug && request.payload.name) {
+                  request.payload.slug = slugify(request.payload.name);
+                }
               }
               return request;
             },
