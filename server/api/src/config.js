@@ -26,8 +26,14 @@ export const config = {
   adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
   sessionSecret: process.env.SESSION_SECRET || 'dev-session-secret-change-in-production',
 
-  // Mercado Pago
+  // Mercado Pago — one-time payments (CheckoutBricks)
   mercadoPagoAccessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || '',
+
+  // Mercado Pago — subscriptions (preapproval).
+  // Falls back to MERCADOPAGO_ACCESS_TOKEN if a separate subscription app is not configured.
+  mercadoPagoSubscriptionToken: process.env.MP_SUBSCRIPTION_TOKEN
+    || process.env.MERCADOPAGO_ACCESS_TOKEN
+    || '',
 
   // Webhook — Mercado Pago
   mpWebhookSecret: process.env.MP_WEBHOOK_SECRET || '',

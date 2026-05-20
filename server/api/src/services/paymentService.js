@@ -105,7 +105,7 @@ export class PaymentService {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${config.mercadoPagoAccessToken}`,
+                    Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
                 },
                 body: JSON.stringify(body),
             });
@@ -138,7 +138,7 @@ export class PaymentService {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${config.mercadoPagoAccessToken}`,
+                    Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
                 },
                 body: JSON.stringify({ status: 'cancelled' }),
             });
@@ -169,7 +169,7 @@ export class PaymentService {
             const res = await fetch(`https://api.mercadopago.com/preapproval/${mpPreapprovalId}`, {
                 method: 'GET',
                 headers: {
-                    Authorization: `Bearer ${config.mercadoPagoAccessToken}`,
+                    Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
                 },
             });
 

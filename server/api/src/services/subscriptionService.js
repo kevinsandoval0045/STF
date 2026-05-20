@@ -59,9 +59,11 @@ export class SubscriptionService {
 
         // 3. Calculate amount — apply 5% loyalty discount if the user has
         //    previously had an AUTHORIZED or CANCELLED subscription for this product.
-        const unitPrice = product.discountPrice
-            ? Number(product.discountPrice)
-            : Number(product.price);
+        //    NOTE: product.discountPrice is a Prisma Decimal object (always truthy),
+        //    so we must check its numeric value > 0, not just its existence.
+        const rawPrice    = Number(product.price);
+        const rawDiscount = product.discountPrice ? Number(product.discountPrice) : 0;
+        const unitPrice   = rawDiscount > 0 ? rawDiscount : rawPrice;
 
         const priorCount = await this.subscriptionRepository.countPriorSubscriptions(userId, productId);
         const discountApplied = priorCount >= 1;
@@ -69,6 +71,13 @@ export class SubscriptionService {
             ? Math.round(unitPrice * 0.95 * 100) / 100  // 5% off, rounded to 2 decimals
             : unitPrice;
         const amount = discountedPrice * quantity;
+
+        // Guard: amount must be positive — catch configuration errors early
+        if (!amount || amount <= 0) {
+            const err = new Error('El precio del producto no es válido para crear una suscripción');
+            err.statusCode = 400;
+            throw err;
+        }
 
         if (discountApplied) {
             console.log(`🎁 [Subscription] Loyalty discount applied for user ${userId} on product ${productId}: ${unitPrice} → ${discountedPrice}`);

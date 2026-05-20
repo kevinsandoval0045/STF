@@ -1,8 +1,10 @@
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { CheckCircle, Clock, Copy, ExternalLink } from 'lucide-react';
+import { CheckCircle, Clock, Copy, ExternalLink, FileDown } from 'lucide-react';
 import SEO from '../components/SEO.jsx';
 import { formatPrice } from '../utils/formatters.js';
 import { useState } from 'react';
+
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
 /**
  * PaymentSuccessPage — shown after a successful (or pending) payment.
@@ -92,14 +94,26 @@ export default function PaymentSuccessPage() {
                 </div>
 
                 <div className="flex flex-col gap-3">
+                    {trackingToken && (
+                        <a
+                            href={`${API_BASE}/orders/receipt/${trackingToken}`}
+                            download={`comprobante-${orderNumber}.pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn-primary flex items-center justify-center gap-2"
+                        >
+                            <FileDown className="w-4 h-4" />
+                            Descargar comprobante PDF
+                        </a>
+                    )}
                     <Link
                         to="/order-tracking"
-                        className="btn-primary flex items-center justify-center gap-2"
+                        className="btn-secondary flex items-center justify-center gap-2"
                     >
                         <ExternalLink className="w-4 h-4" />
                         Rastrear tu pedido
                     </Link>
-                    <Link to="/" className="btn-secondary">
+                    <Link to="/" className="text-sm text-gray-500 hover:text-gray-700 transition-colors text-center">
                         Seguir comprando
                     </Link>
                 </div>

@@ -43,7 +43,8 @@ export class ProductService {
      * Get a product by ID (internal use, e.g. for order validation).
      */
     async getProductById(id) {
-        return this.productRepository.findById(id);
+        const product = await this.productRepository.findById(id);
+        return product ? this.#formatProduct(product) : null;
     }
 
     /**
