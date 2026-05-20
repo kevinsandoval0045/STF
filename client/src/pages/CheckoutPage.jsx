@@ -132,14 +132,16 @@ export default function CheckoutPage() {
     };
 
     /**
-     * MP Payment Brick callback — fired when payment is submitted successfully.
-     * MP will redirect automatically via back_urls, but we keep this as a fallback.
+     * MP Payment Brick onSubmit — fired when the user clicks "Pagar".
+     * DO NOT navigate here — payment has NOT been processed yet at this point.
+     * MP will process the payment and redirect automatically via the back_urls
+     * configured in the preference (success → /payment-success, failure → /payment-failure).
      */
-    const onPaymentSuccess = useCallback(() => {
-        if (orderSummary) {
-            navigate('/payment-success', { state: orderSummary });
-        }
-    }, [navigate, orderSummary]);
+    const onPaymentSubmit = useCallback(async ({ selectedPaymentMethod, formData }) => {
+        // Let the brick resolve and MP handle the redirect via back_urls.
+        // No navigation here — navigating here causes false "success" screens.
+        console.log('[Checkout] Payment submitted, waiting for MP redirect...', selectedPaymentMethod);
+    }, []);
 
     const onPaymentError = useCallback((error) => {
         console.error('MP Payment error:', error);
@@ -342,7 +344,7 @@ export default function CheckoutPage() {
                                             },
                                         },
                                     }}
-                                    onSubmit={onPaymentSuccess}
+                                    onSubmit={onPaymentSubmit}
                                     onError={onPaymentError}
                                 />
                             </div>
