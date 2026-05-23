@@ -285,8 +285,10 @@ export class SubscriptionService {
         try {
             // The dataId for this event type is the payment ID
             // We need to look up which subscription it belongs to via MP API
+            // Use the subscription token — this payment was charged by the subscriptions app.
+            // If MP_SUBSCRIPTION_TOKEN is not set, it falls back to the main token (same app).
             const paymentRes = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
-                headers: { Authorization: `Bearer ${config.mercadoPagoAccessToken}` },
+                headers: { Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}` },
             });
 
             if (!paymentRes.ok) {

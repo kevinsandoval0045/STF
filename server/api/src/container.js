@@ -92,6 +92,8 @@ export {
     subscriptionService,
     // orderService exported directly for webhook route (single payment handler)
     orderService,
+    // paymentService exported directly for payment processing route
+    paymentService,
     // emailService exported directly for routes without a controller layer (e.g. returns)
     emailService,
 };

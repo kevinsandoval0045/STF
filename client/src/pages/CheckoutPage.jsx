@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { createOrder, updateProfile } from '../services/apiService.js';
+import api from '../services/apiService.js';
 import { formatPrice } from '../utils/formatters.js';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 import { Loader2, ShieldCheck, Truck, CreditCard, CheckCircle2, MapPin, Pencil } from 'lucide-react';
@@ -114,6 +115,7 @@ export default function CheckoutPage() {
 
             setPreferenceId(result.preferenceId);
             setOrderSummary({
+                orderId:       result.orderId,
                 orderNumber:   result.orderNumber,
                 trackingToken: result.trackingToken,
                 totalAmount:   result.totalAmount,
@@ -133,15 +135,45 @@ export default function CheckoutPage() {
 
     /**
      * MP Payment Brick onSubmit — fired when the user clicks "Pagar".
-     * DO NOT navigate here — payment has NOT been processed yet at this point.
-     * MP will process the payment and redirect automatically via the back_urls
-     * configured in the preference (success → /payment-success, failure → /payment-failure).
+     *
+     * Two payment paths:
+     * 1. CARD (credit/debit): brick calls onSubmit with tokenized formData.
+     *    We POST to /api/v1/payments/process → MP creates the charge → we navigate.
+     *    The webhook ALSO fires and updates order status (with idempotency guard).
+     *
+     * 2. REDIRECT methods (Oxxo, bank transfer, MP wallet): the brick redirects
+     *    the user to MP's hosted page. back_urls in the preference handle the return.
+     *    onSubmit is NOT called for these — so the code below only runs for cards.
      */
     const onPaymentSubmit = useCallback(async ({ selectedPaymentMethod, formData }) => {
-        // Let the brick resolve and MP handle the redirect via back_urls.
-        // No navigation here — navigating here causes false "success" screens.
-        console.log('[Checkout] Payment submitted, waiting for MP redirect...', selectedPaymentMethod);
-    }, []);
+        // Guard: if there's no orderId we can't process (shouldn't happen in practice)
+        if (!orderSummary?.orderId) {
+            console.error('[Checkout] onPaymentSubmit called but orderId is missing');
+            return;
+        }
+
+        // POST to our backend, which calls MP's API with the authoritative amount from DB
+        const { data } = await api.post('/payments/process', {
+            orderId: orderSummary.orderId,
+            formData,
+        });
+
+        const { status } = data;
+        console.log(`[Checkout] Payment result: ${status} (method: ${selectedPaymentMethod})`);
+
+        if (status === 'approved') {
+            navigate(
+                `/payment-success?orderNumber=${encodeURIComponent(orderSummary.orderNumber)}&trackingToken=${encodeURIComponent(orderSummary.trackingToken)}`
+            );
+        } else if (status === 'pending' || status === 'in_process') {
+            // Common for some bank transfers / 3DS flows that settle asynchronously
+            navigate(
+                `/payment-success?orderNumber=${encodeURIComponent(orderSummary.orderNumber)}&trackingToken=${encodeURIComponent(orderSummary.trackingToken)}&pending=true`
+            );
+        }
+        // For 'rejected': we do NOT navigate — the brick shows its own rejection UI
+        // so the user can retry with a different card.
+    }, [orderSummary, navigate]);
 
     const onPaymentError = useCallback((error) => {
         console.error('MP Payment error:', error);

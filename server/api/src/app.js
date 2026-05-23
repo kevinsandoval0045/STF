@@ -18,6 +18,7 @@ import returnRoutes from './routes/returns.js';
 import authRoutes from './routes/auth.js';
 import subscriptionRoutes from './routes/subscriptions.js';
 import webhookRoutes from './routes/webhooks.js';
+import paymentRoutes from './routes/payments.js';
 
 const app = express();
 
@@ -81,6 +82,7 @@ app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/returns', returnRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/subscriptions', subscriptionRoutes);
+app.use('/api/v1/payments', paymentRoutes);
 
 /**
  * Global Error Handler

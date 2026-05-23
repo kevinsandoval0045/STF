@@ -1,4 +1,4 @@
-import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { config } from '../config.js';
 
 /**
@@ -14,6 +14,8 @@ export class PaymentService {
         this.client = new MercadoPagoConfig({
             accessToken: config.mercadoPagoAccessToken,
         });
+        // SDK instances
+        this.payment = new Payment(this.client);
     }
 
     /**
@@ -67,6 +69,57 @@ export class PaymentService {
         } catch (err) {
             // Log the full MP error for debugging
             console.error('❌ MercadoPago createPreference error:');
+            console.error('  Status:', err.status);
+            console.error('  Message:', err.message);
+            console.error('  Cause:', JSON.stringify(err.cause ?? err, null, 2));
+            throw err;
+        }
+    }
+
+    // ─── Card payment (no-redirect) ──────────────────────────────────────
+
+    /**
+     * Process a card payment submitted by the Payment Brick (non-redirect flow).
+     *
+     * The Payment Brick calls onSubmit with a `formData` object that contains
+     * a tokenized card (never raw card data — PCI scope stays with MP).
+     * We forward that data to MP's /v1/payments endpoint via the SDK.
+     *
+     * SECURITY: `amount` MUST come from our own DB (the saved order), NOT from
+     * the frontend, to prevent amount tampering.
+     *
+     * @param {Object} formData  - Tokenized payment data from the Payment Brick
+     * @param {number} amount    - Authoritative total from the Order record
+     * @param {string} orderId   - Our internal order ID (used as external_reference)
+     * @returns {{ status: string, paymentId: number, statusDetail: string }}
+     */
+    async processCardPayment({ formData, amount, orderId }) {
+        try {
+            const result = await this.payment.create({
+                body: {
+                    // Spread the brick's tokenized payload (token, payment_method_id,
+                    // issuer_id, installments, payer, etc.)
+                    ...formData,
+                    // Override amount with our authoritative server-side value
+                    transaction_amount: amount,
+                    // Link to our order so the webhook can resolve it
+                    external_reference: String(orderId),
+                },
+                requestOptions: {
+                    // Idempotency key prevents duplicate charges on retries
+                    idempotencyKey: `card-payment-${orderId}`,
+                },
+            });
+
+            console.log(`✅ [Payment] Card payment ${result.id} → ${result.status} (${result.status_detail})`);
+
+            return {
+                status: result.status,           // 'approved' | 'pending' | 'rejected' | 'in_process'
+                paymentId: result.id,
+                statusDetail: result.status_detail,
+            };
+        } catch (err) {
+            console.error('❌ [Payment] processCardPayment error:');
             console.error('  Status:', err.status);
             console.error('  Message:', err.message);
             console.error('  Cause:', JSON.stringify(err.cause ?? err, null, 2));

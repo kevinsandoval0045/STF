@@ -134,7 +134,22 @@ async function handleSinglePayment(mpPaymentId) {
             return;
         }
 
-        // 4. Transition order PENDING → PROCESSING
+        // 4. IDEMPOTENCY — fetch current order status before updating.
+        //    MP may retry the webhook on timeout or 5xx; the payment/process endpoint
+        //    may also have already updated the order. Avoid double-processing.
+        const order = await orderService.getOrderById(orderId);
+
+        if (!order) {
+            console.warn(`⚠️  [Webhook/payment] Order ${orderId} not found for payment ${mpPaymentId}`);
+            return;
+        }
+
+        if (order.status !== 'PENDING') {
+            console.log(`ℹ️  [Webhook/payment] Order ${orderId} already in status "${order.status}" — skipping (duplicate webhook)`);
+            return;
+        }
+
+        // 5. Transition order PENDING → PROCESSING
         //    updateOrderStatus handles history entry creation internally.
         await orderService.updateOrderStatus(
             orderId,

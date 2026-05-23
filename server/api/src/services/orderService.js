@@ -393,5 +393,15 @@ export class OrderService {
     async getMyOrders(userId) {
         return this.orderRepository.findByUserId(userId);
     }
+
+    /**
+     * Get a single order by its internal ID.
+     * Used by the payment processing route to verify the order before charging.
+     *
+     * @param {string} orderId
+     */
+    async getOrderById(orderId) {
+        return this.orderRepository.findById(orderId);
+    }
 }
 
