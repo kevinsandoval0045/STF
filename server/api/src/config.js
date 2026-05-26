@@ -35,8 +35,10 @@ export const config = {
     || process.env.MERCADOPAGO_ACCESS_TOKEN
     || '',
 
-  // Webhook — Mercado Pago
+  // Webhook — Mercado Pago (app de pagos únicos)
   mpWebhookSecret: process.env.MP_WEBHOOK_SECRET || '',
+  // Webhook — Mercado Pago (app de suscripciones — puede ser diferente secret)
+  mpSubscriptionWebhookSecret: process.env.MP_SUBSCRIPTION_WEBHOOK_SECRET || '',
   publicUrl: process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 8080}`,
 
   // Frontend URL — used to build back_urls in payment preferences.

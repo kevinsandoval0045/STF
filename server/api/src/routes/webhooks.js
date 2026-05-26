@@ -7,19 +7,19 @@ import { subscriptionService, orderService } from '../container.js';
  * Webhook Routes — Mercado Pago notifications.
  *
  * POST /api/v1/webhooks/mp
+ *   → App de pagos únicos (Checkout Bricks)
+ *   → Valida con MP_WEBHOOK_SECRET
+ *   → Solo maneja eventos type="payment"
  *
- * - No authentication middleware (MP can't send JWTs)
- * - Verified via HMAC-SHA256 signature in x-signature header
- * - Always responds 200 immediately, processes asynchronously
+ * POST /api/v1/webhooks/mp-subscriptions
+ *   → App de suscripciones (Preapproval)
+ *   → Valida con MP_SUBSCRIPTION_WEBHOOK_SECRET
+ *   → Solo maneja eventos subscription_preapproval y subscription_authorized_payment
  *
- * MP webhook signature verification:
- * Template: id:[data.id];request-id:[x-request-id];ts:[ts];
- * data.id comes as a QUERY PARAMETER (not in the body)
- *
- * Event types handled:
- * - "payment"                      → Single purchase via Payment Brick
- * - "subscription_preapproval"     → Subscription lifecycle changes
- * - "subscription_authorized_payment" → Recurring charge processed
+ * Ambos endpoints:
+ * - Sin autenticación JWT (MP no puede enviarlos)
+ * - Verificados vía HMAC-SHA256 en el header x-signature
+ * - Responden 200 inmediatamente, procesan de forma asíncrona
  */
 const router = Router();
 
@@ -29,16 +29,22 @@ const router = Router();
  * @param {import('express').Request} req
  * @returns {boolean}
  */
-function verifyMpSignature(req) {
-    const secret = config.mpWebhookSecret;
-
+/**
+ * Verify the x-signature header from Mercado Pago.
+ *
+ * @param {import('express').Request} req
+ * @param {string} secret  - The Webhook Secret for the specific MP app
+ * @param {string} label   - Label used in log messages (e.g. 'payments' | 'subscriptions')
+ * @returns {boolean}
+ */
+function verifyMpSignature(req, secret, label = 'webhook') {
     // If no secret configured — skip in dev, reject in production
     if (!secret) {
         if (config.nodeEnv === 'production') {
-            console.error('❌ [Webhook] MP_WEBHOOK_SECRET not configured in production — rejecting request');
+            console.error(`❌ [Webhook/${label}] Secret not configured in production — rejecting request`);
             return false;
         }
-        console.warn('⚠️  [Webhook] MP_WEBHOOK_SECRET not configured — skipping signature verification (dev only)');
+        console.warn(`⚠️  [Webhook/${label}] Secret not configured — skipping signature verification (dev only)`);
         return true;
     }
 
@@ -47,7 +53,7 @@ function verifyMpSignature(req) {
     const dataId = req.query['data.id'];
 
     if (!xSignature) {
-        console.warn('⚠️  [Webhook] Missing x-signature header');
+        console.warn(`⚠️  [Webhook/${label}] Missing x-signature header`);
         return false;
     }
 
@@ -59,31 +65,27 @@ function verifyMpSignature(req) {
 
     parts.forEach((part) => {
         const [key, ...valueParts] = part.split('=');
-        const value = valueParts.join('='); // handle '=' in value
+        const value = valueParts.join('=');
         if (key?.trim() === 'ts') ts = value?.trim() || '';
         if (key?.trim() === 'v1') hash = value?.trim() || '';
     });
 
     if (!ts || !hash) {
-        console.warn('⚠️  [Webhook] Could not parse ts/v1 from x-signature');
+        console.warn(`⚠️  [Webhook/${label}] Could not parse ts/v1 from x-signature`);
         return false;
     }
 
     // Build the manifest string per MP docs
     const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
 
-    // Compute HMAC-SHA256
-    const computed = crypto
-        .createHmac('sha256', secret)
-        .update(manifest)
-        .digest('hex');
-
-    const valid = computed === hash;
+    // Compute HMAC-SHA256 with timing-safe comparison
+    const computed = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
+    const computedBuf = Buffer.from(computed, 'hex');
+    const hashBuf = Buffer.from(hash, 'hex');
+    const valid = computedBuf.length === hashBuf.length && crypto.timingSafeEqual(computedBuf, hashBuf);
 
     if (!valid) {
-        console.warn('⚠️  [Webhook] HMAC verification failed');
-        console.warn(`   Expected: ${hash}`);
-        console.warn(`   Computed: ${computed}`);
+        console.warn(`⚠️  [Webhook/${label}] HMAC verification failed`);
         console.warn(`   Manifest: ${manifest}`);
     }
 
@@ -163,38 +165,59 @@ async function handleSinglePayment(mpPaymentId) {
     }
 }
 
+// ── /mp — App de pagos únicos (Checkout Bricks) ──────────────────────────────
 router.post('/mp', (req, res) => {
-    // Always respond 200 immediately — MP expects a fast response (<5 s)
     res.status(200).send('OK');
 
-    // Verify HMAC signature
-    if (!verifyMpSignature(req)) {
-        console.error('❌ [Webhook] Signature verification failed — ignoring event');
+    if (!verifyMpSignature(req, config.mpWebhookSecret, 'payments')) {
+        console.error('❌ [Webhook/payments] Signature verification failed — ignoring event');
         return;
     }
 
-    // Extract event info
     const { type, action } = req.body;
     const dataId = req.query['data.id'] || req.body?.data?.id;
 
-    console.log(`🔔 [Webhook] Received: type=${type}, action=${action}, dataId=${dataId}`);
+    console.log(`🔔 [Webhook/payments] type=${type}, action=${action}, dataId=${dataId}`);
 
     if (!type || !dataId) {
-        console.warn('⚠️  [Webhook] Missing type or data.id — ignoring');
+        console.warn('⚠️  [Webhook/payments] Missing type or data.id — ignoring');
         return;
     }
 
-    // ── Route to the correct handler ──────────────────────────────────────────
     if (type === 'payment') {
-        // One-time purchase (Payment Brick / Checkout Bricks)
         handleSinglePayment(String(dataId)).catch((err) => {
-            console.error(`❌ [Webhook] Error in handleSinglePayment:`, err.message);
+            console.error('❌ [Webhook/payments] Error in handleSinglePayment:', err.message);
         });
     } else {
-        // Subscription events: preapproval lifecycle + recurring charges
+        console.warn(`⚠️  [Webhook/payments] Unexpected event type "${type}" on payments endpoint — ignoring`);
+    }
+});
+
+// ── /mp-subscriptions — App de suscripciones (Preapproval) ───────────────────
+router.post('/mp-subscriptions', (req, res) => {
+    res.status(200).send('OK');
+
+    if (!verifyMpSignature(req, config.mpSubscriptionWebhookSecret, 'subscriptions')) {
+        console.error('❌ [Webhook/subscriptions] Signature verification failed — ignoring event');
+        return;
+    }
+
+    const { type, action } = req.body;
+    const dataId = req.query['data.id'] || req.body?.data?.id;
+
+    console.log(`🔔 [Webhook/subscriptions] type=${type}, action=${action}, dataId=${dataId}`);
+
+    if (!type || !dataId) {
+        console.warn('⚠️  [Webhook/subscriptions] Missing type or data.id — ignoring');
+        return;
+    }
+
+    if (type === 'subscription_preapproval' || type === 'subscription_authorized_payment') {
         subscriptionService.handleWebhookEvent(type, String(dataId)).catch((err) => {
-            console.error(`❌ [Webhook] Error processing subscription event:`, err.message);
+            console.error('❌ [Webhook/subscriptions] Error processing subscription event:', err.message);
         });
+    } else {
+        console.warn(`⚠️  [Webhook/subscriptions] Unexpected event type "${type}" on subscriptions endpoint — ignoring`);
     }
 });
 

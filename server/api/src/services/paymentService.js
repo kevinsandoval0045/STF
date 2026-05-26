@@ -63,6 +63,12 @@ export class PaymentService {
                         orderNumber: order.orderNumber,
                     },
                 },
+                // Prevents duplicate preferences if the request is retried
+                // (e.g. double click, network timeout). MP returns the same
+                // preference if the key was already used.
+                requestOptions: {
+                    idempotencyKey: `preference-${order.orderId}`,
+                },
             });
 
             return result.id;
