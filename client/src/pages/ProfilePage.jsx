@@ -237,7 +237,11 @@ export default function ProfilePage() {
     };
 
     const hasAddress = user?.address && user.address.trim() !== '';
-    const activeSubs = subs.filter((s) => s.status === 'AUTHORIZED' || s.status === 'PENDING');
+    const activeSubs      = subs.filter((s) => s.status === 'AUTHORIZED' || s.status === 'PENDING');
+    // PENDING orders = payment not yet confirmed by MP (checkout started but not paid)
+    // We show them separately so they don't pollute the purchase history
+    const pendingOrders   = orders.filter((o) => o.status === 'PENDING');
+    const confirmedOrders = orders.filter((o) => o.status !== 'PENDING');
 
     if (!isAuthenticated || !user) return null;
 
@@ -313,82 +317,114 @@ export default function ProfilePage() {
                         )}
                     </Accordion>
 
-                    {/* ── 2. Historial de compras ──────────────────── */}
-                    <Accordion id="orders" title="Historial de compras" icon={ShoppingBag} count={orders.length}>
+                    {/* ── 2. Historial de compras ────────────── */}
+                    <Accordion id="orders" title="Historial de compras" icon={ShoppingBag} count={confirmedOrders.length}>
                         {ordersLoading ? (
                             <div className="flex justify-center py-4">
                                 <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
                             </div>
-                        ) : orders.length === 0 ? (
-                            <EmptyState message="Todavía no tienes compras registradas. ¡Tu próximo pedido aparecerá aquí!" />
                         ) : (
-                            orders.map((order) => (
-                                <div key={order.id}
-                                    className="p-4 rounded-xl border border-gray-100 bg-gray-50 space-y-3">
-                                    {/* Order header */}
-                                    <div className="flex items-center justify-between flex-wrap gap-2">
-                                        <div>
-                                            <p className="text-xs text-kas-muted">Pedido</p>
-                                            <p className="font-bold text-kas-text text-sm">{order.orderNumber}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-xs text-kas-muted">{formatDate(order.createdAt)}</p>
-                                            <p className="font-semibold text-brand-red text-sm">{formatPrice(order.totalAmount)}</p>
-                                        </div>
-                                    </div>
-                                    {/* Status + Cancel button */}
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className={`inline-block text-xs font-medium px-2 py-1 rounded-full ${STATUS_COLORS[order.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                                            {STATUS_LABELS[order.status] ?? order.status}
-                                        </span>
-                                        {order.status === 'PENDING' && (
-                                            <button
-                                                onClick={() => handleCancelOrder(order.id)}
-                                                disabled={cancellingOrderId === order.id}
-                                                className="text-xs px-3 py-1 rounded-lg border border-red-200
-                                                           text-red-600 hover:bg-red-50 transition-colors
-                                                           disabled:opacity-50 flex items-center gap-1"
-                                            >
-                                                {cancellingOrderId === order.id
-                                                    ? <Loader2 className="w-3 h-3 animate-spin" />
-                                                    : 'Cancelar pedido'}
-                                            </button>
-                                        )}
-                                    </div>
-                                    {/* Items */}
-                                    <div className="divide-y divide-gray-100">
-                                        {order.items?.map((item) => (
-                                            <div key={item.id}
-                                                className="flex items-center justify-between py-2 gap-3">
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    <Package className="w-4 h-4 text-gray-400 shrink-0" />
-                                                    <span className="text-sm text-kas-text truncate">
-                                                        {item.productNameSnap}
-                                                        <span className="text-kas-muted"> × {item.quantity}</span>
-                                                    </span>
+                            <>
+                                {/* ── Pedidos con pago pendiente ─────────── */}
+                                {pendingOrders.length > 0 && (
+                                    <div className="space-y-2 mb-4">
+                                        <p className="text-xs font-semibold text-yellow-700 uppercase tracking-wide">
+                                            Pago pendiente
+                                        </p>
+                                        {pendingOrders.map((order) => (
+                                            <div key={order.id}
+                                                className="p-4 rounded-xl border border-yellow-200 bg-yellow-50 space-y-2">
+                                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                                    <div>
+                                                        <p className="text-xs text-yellow-600">Pedido (sin confirmar)</p>
+                                                        <p className="font-bold text-kas-text text-sm">{order.orderNumber}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-xs text-kas-muted">{formatDate(order.createdAt)}</p>
+                                                        <p className="font-semibold text-brand-red text-sm">{formatPrice(order.totalAmount)}</p>
+                                                    </div>
                                                 </div>
-                                                {item.product?.slug && (
-                                                    <Link
-                                                        to={`/product/${item.product.slug}`}
-                                                        className="text-xs font-medium text-kas-text underline hover:text-kas-secondary shrink-0"
+                                                <p className="text-xs text-yellow-700">
+                                                    El pago no fue completado. Puedes cancelar este pedido o ir al checkout para intentarlo de nuevo.
+                                                </p>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <button
+                                                        onClick={() => handleCancelOrder(order.id)}
+                                                        disabled={cancellingOrderId === order.id}
+                                                        className="text-xs px-3 py-1 rounded-lg border border-red-200
+                                                                   text-red-600 hover:bg-red-50 transition-colors
+                                                                   disabled:opacity-50 flex items-center gap-1"
                                                     >
-                                                        Ver producto
-                                                    </Link>
-                                                )}
+                                                        {cancellingOrderId === order.id
+                                                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                                                            : 'Cancelar pedido'}
+                                                    </button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
-                                    {/* Track link */}
-                                    {order.trackingToken && (
-                                        <Link
-                                            to={`/order-tracking?token=${order.trackingToken}`}
-                                            className="text-xs text-kas-muted hover:text-kas-text underline transition-colors"
-                                        >
-                                            Rastrear pedido →
-                                        </Link>
-                                    )}
-                                </div>
-                            ))
+                                )}
+
+                                {/* ── Pedidos confirmados ─────────────── */}
+                                {confirmedOrders.length === 0 ? (
+                                    <EmptyState message="Todavía no tienes compras registradas. ¡Tu próximo pedido aparecerá aquí!" />
+                                ) : (
+                                    confirmedOrders.map((order) => (
+                                        <div key={order.id}
+                                            className="p-4 rounded-xl border border-gray-100 bg-gray-50 space-y-3">
+                                            {/* Order header */}
+                                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                                <div>
+                                                    <p className="text-xs text-kas-muted">Pedido</p>
+                                                    <p className="font-bold text-kas-text text-sm">{order.orderNumber}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-xs text-kas-muted">{formatDate(order.createdAt)}</p>
+                                                    <p className="font-semibold text-brand-red text-sm">{formatPrice(order.totalAmount)}</p>
+                                                </div>
+                                            </div>
+                                            {/* Status + Cancel button */}
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className={`inline-block text-xs font-medium px-2 py-1 rounded-full ${STATUS_COLORS[order.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                                                    {STATUS_LABELS[order.status] ?? order.status}
+                                                </span>
+                                            </div>
+                                            {/* Items */}
+                                            <div className="divide-y divide-gray-100">
+                                                {order.items?.map((item) => (
+                                                    <div key={item.id}
+                                                        className="flex items-center justify-between py-2 gap-3">
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <Package className="w-4 h-4 text-gray-400 shrink-0" />
+                                                            <span className="text-sm text-kas-text truncate">
+                                                                {item.productNameSnap}
+                                                                <span className="text-kas-muted"> × {item.quantity}</span>
+                                                            </span>
+                                                        </div>
+                                                        {item.product?.slug && (
+                                                            <Link
+                                                                to={`/product/${item.product.slug}`}
+                                                                className="text-xs font-medium text-kas-text underline hover:text-kas-secondary shrink-0"
+                                                            >
+                                                                Ver producto
+                                                            </Link>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            {/* Track link */}
+                                            {order.trackingToken && (
+                                                <Link
+                                                    to={`/order-tracking?token=${order.trackingToken}`}
+                                                    className="text-xs text-kas-muted hover:text-kas-text underline transition-colors"
+                                                >
+                                                    Rastrear pedido →
+                                                </Link>
+                                            )}
+                                        </div>
+                                    ))
+                                )}
+                            </>
                         )}
                     </Accordion>
 

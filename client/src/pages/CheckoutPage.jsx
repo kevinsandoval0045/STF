@@ -158,8 +158,8 @@ export default function CheckoutPage() {
             formData,
         });
 
-        const { status } = data;
-        console.log(`[Checkout] Payment result: ${status} (method: ${selectedPaymentMethod})`);
+        const { status, statusDetail } = data;
+        console.log(`[Checkout] Payment result: ${status} / ${statusDetail} (method: ${selectedPaymentMethod})`);
 
         if (status === 'approved') {
             navigate(
@@ -170,9 +170,26 @@ export default function CheckoutPage() {
             navigate(
                 `/payment-success?orderNumber=${encodeURIComponent(orderSummary.orderNumber)}&trackingToken=${encodeURIComponent(orderSummary.trackingToken)}&pending=true`
             );
+        } else {
+            // Payment was rejected by MP. Throwing an Error here is required:
+            // the Payment Brick listens for a rejected promise and automatically
+            // re-enables its form so the user can correct their data and retry.
+            const REJECTION_MESSAGES = {
+                cc_rejected_bad_filled_card_number: 'Número de tarjeta incorrecto. Verifica los datos.',
+                cc_rejected_bad_filled_date:         'Fecha de vencimiento incorrecta.',
+                cc_rejected_bad_filled_other:        'Datos de tarjeta incorrectos. Intenta de nuevo.',
+                cc_rejected_bad_filled_security_code:'Código de seguridad (CVV) incorrecto.',
+                cc_rejected_blacklist:               'Esta tarjeta no puede procesar el pago.',
+                cc_rejected_call_for_authorize:      'Comunícate con tu banco para autorizar el pago.',
+                cc_rejected_card_disabled:           'La tarjeta está deshabilitada. Usa otra tarjeta.',
+                cc_rejected_insufficient_amount:     'Fondos insuficientes en la tarjeta.',
+                cc_rejected_invalid_installments:    'El número de cuotas seleccionado no está disponible.',
+                cc_rejected_max_attempts:            'Límite de intentos alcanzado. Intenta más tarde.',
+            };
+            const message = REJECTION_MESSAGES[statusDetail]
+                ?? 'El pago fue rechazado. Verifica tus datos o intenta con otra tarjeta.';
+            throw new Error(message);
         }
-        // For 'rejected': we do NOT navigate — the brick shows its own rejection UI
-        // so the user can retry with a different card.
     }, [orderSummary, navigate]);
 
     const onPaymentError = useCallback((error) => {
