@@ -120,12 +120,16 @@ Toda instanciación ocurre en `container.js`. Las clases reciben sus dependencia
 
 ## 5. Funcionalidades pendientes
 
-- [ ] Migrar `createPreapproval`, `cancelPreapproval`, `getPreapproval` del REST directo al SDK oficial de Mercado Pago (hallazgo C1 de auditoría).
+- [x] ~~Migrar `createPreapproval`, `cancelPreapproval`, `getPreapproval` del REST directo al SDK oficial de Mercado Pago (hallazgo C1)~~ 🟡 Postergado — SDK v2 no expone `PreApproval`. Se mantiene `fetch` nativo como solución deliberada hasta confirmar disponibilidad.
 - [x] ~~Agregar `idempotencyKey` en `createPreference`~~ ✅ Hecho 2026-05-26
 - [x] ~~Configurar `MP_SUBSCRIPTION_WEBHOOK_SECRET` en Railway~~ ✅ Hecho 2026-05-26
 - [x] ~~Registrar `/api/v1/webhooks/mp-subscriptions` en la app de suscripciones de MP~~ ✅ Hecho 2026-05-26
-- [ ] Validar flujo completo de tarjeta sin redirect en ambiente de pruebas (con tarjetas de prueba oficiales de MP).
+- [x] ~~Agregar `notification_url` en `createPreapproval`~~ ✅ Hecho 2026-05-26 — apunta a `config.publicUrl/api/v1/webhooks/mp-subscriptions`
+- [x] ~~`MP_SUBSCRIPTION_WEBHOOK_SECRET` en startup guard de producción~~ ✅ Hecho 2026-05-26
 - [x] ~~URL de despliegue del frontend~~ ✅ `https://stf-two.vercel.app` (Vercel)
+- [ ] Corregir `RESEND_API_KEY` en Railway (actualmente inválida — emails fallan en producción).
+- [ ] Validar flujo completo de suscripción en producción (webhook `subscription_preapproval` activando suscripción).
+- [ ] Probar pago aprobado con tarjeta de prueba MP (usar `APRO` como nombre en la tarjeta).
 
 ---
 
@@ -154,7 +158,10 @@ Toda instanciación ocurre en `container.js`. Las clases reciben sus dependencia
 | 2026-05-22 | Webhook de pagos sin idempotencia | No se verificaba si la orden ya estaba en PROCESSING antes de actualizarla | Se agregó `getOrderById` + check de `order.status !== 'PENDING'` | Siempre verificar estado actual antes de hacer transiciones de estado |
 | 2026-05-22 | Import `authMiddleware` incorrecto en nueva ruta | El middleware se exporta como `authenticate`, no `authMiddleware` | Corregido a `import { authenticate }` | Siempre verificar el nombre exacto del export antes de importar |
 | 2026-05-23 | Un solo webhook secret para dos apps de MP distintas | Se asumió que un endpoint era suficiente | Se crearon dos endpoints separados: `/mp` y `/mp-subscriptions` con sus propios secrets | Cada app de MP genera su propio Webhook Secret — nunca compartir un solo endpoint |
-| 2026-05-xx | `discountPrice` de Prisma es siempre truthy como objeto Decimal | No se convirtió a `Number()` antes de comparar con `> 0` | Se usa `Number(product.discountPrice) > 0` en todos los servicios | Siempre convertir campos `Decimal` de Prisma con `Number()` antes de operar |
+| 2026-05-26 | `createPreapproval` no tenía `notification_url` | MP necesita saber a dónde enviar los webhooks de suscripción explicitamente vía `notification_url` en el body | Se agregó `notification_url: config.publicUrl + /api/v1/webhooks/mp-subscriptions` al body del preapproval | Siempre incluir `notification_url` al crear preapprovals; no asumir que MP lo infiere del panel |
+| 2026-05-26 | `MP_SUBSCRIPTION_WEBHOOK_SECRET` no estaba en el startup guard | Se olvidó agregar la nueva variable al bloque `required` de `config.js` | Añadida al guard de producción | Cada nueva variable crítica debe agregarse al startup guard inmediatamente |
+| 2026-05-26 | `onPaymentSubmit` no lanzaba error en pagos rechazados | El Payment Brick requiere un `throw` para re-habilitar su formulario | Se agregó `throw new Error(mensaje)` con mensajes especínficos por `statusDetail` | Siempre `throw` en rechazo de MP — nunca retornar undefined silenciosamente |
+| 2026-05-26 | Órdenes PENDING visibles en historial como si fueran confirmadas | No se separaban en el UI — `getMyOrders` devuelve todo | Se separaron en `pendingOrders` / `confirmedOrders` en `ProfilePage.jsx` | Los `PENDING` son checkouts incompletos; no mezclar con compras confirmadas |
 
 ---
 
@@ -166,6 +173,8 @@ Toda instanciación ocurre en `container.js`. Las clases reciben sus dependencia
 | **Zod para validación en controllers** | Type-safe, excelente DX, integración natural con Express | Joi (sintaxis más verbosa), class-validator (requiere decorators) |
 | **Dos apps separadas en MP** (pagos + suscripciones) | Mercado Pago recomienda apps distintas por producto; secrets de webhook son independientes | Una sola app (conflicto de secrets en webhooks) |
 | **Dos endpoints de webhook separados** (`/mp` y `/mp-subscriptions`) | Cada app de MP tiene su propio Webhook Secret; compartir uno causa fallos de validación HMAC | Un solo endpoint con lógica interna para detectar la app origen (no fiable) |
+| **`notification_url` en `createPreapproval`** | MP necesita la URL explícita en el body del preapproval para saber a dónde enviar eventos de suscripción. Construida desde `config.publicUrl` para nunca estar hardcodeada | Configurar solo en el panel de MP (poco confiable si se cambia de ambiente) |
+| **Startup guard incluye `MP_SUBSCRIPTION_WEBHOOK_SECRET`** | Fail-fast en producción si falta la variable crítica del webhook de suscripciones | Descubrirlo en runtime cuando llegue el primer webhook |
 | **`billingDays = servingsPerContainer - 3`** | Se envía 3 días antes de que el cliente se quede sin producto | Otras fórmulas (ej. fecha fija mensual) — menos personalizado |
 | **`external_reference` = orderId** | Permite vincular el pago de MP con la orden interna sin estado adicional | Guardar el `paymentId` de MP en la orden antes de confirmación (race condition) |
 | **`crypto.timingSafeEqual` para HMAC** | Previene timing attacks en comparación de firmas | `===` simple (vulnerable) |
@@ -267,9 +276,10 @@ git add . && git commit -m "mensaje" && git push
 
 ## 11. Problemas conocidos
 
-- **Preapproval vía REST directo**: Las operaciones de suscripción (`createPreapproval`, `cancelPreapproval`, `getPreapproval`) usan `fetch` nativo en lugar del SDK oficial de Mercado Pago. Esto incumple el criterio de calidad de MP. Pendiente migrar cuando se confirme que `PreApproval` está disponible en el SDK v2.
-- **`idempotencyKey` faltante en `createPreference`**: Si hay doble clic o reintento de red al crear la orden, se pueden generar preferencias duplicadas para el mismo `orderId`. Pendiente agregar `requestOptions.idempotencyKey`.
-- **`MP_SUBSCRIPTION_WEBHOOK_SECRET`**: Nueva variable añadida al `config.js` y referenciada en el webhook. Debe configurarse en Railway con el secret correcto de la app de suscripciones de MP para que la validación HMAC funcione en producción.
+- **`RESEND_API_KEY` inválida en Railway**: Los emails transaccionales fallan en producción. Actualizar la key en el panel de Railway.
+- **Preapproval vía REST directo**: Se mantiene `fetch` nativo de forma deliberada (SDK v2 no expone `PreApproval`). Monitorear actualizaciones del SDK oficial.
+- **`idempotencyKey` faltante en `processCardPayment`**: El endpoint `/payments/process` ya tiene `idempotencyKey: card-payment-${orderId}` ✔. El preapproval no lo soporta vía REST (MP no exige idempotencia en ese endpoint).
+- **Flujo de suscripción pendiente de validación** en producción con un preapproval real end-to-end.
 
 ---
 
@@ -312,11 +322,15 @@ git add . && git commit -m "mensaje" && git push
 ## 15. Notas para futuras sesiones
 
 - **Dos aplicaciones en Mercado Pago**: una para pagos únicos (Checkout Bricks) y otra para suscripciones (Preapproval). Cada una tiene su propio `Access Token` y `Webhook Secret`. Los tokens están en Railway como `MERCADOPAGO_ACCESS_TOKEN` y `MP_SUBSCRIPTION_TOKEN`.
-- **Dos endpoints de webhook**: `/api/v1/webhooks/mp` (pagos) y `/api/v1/webhooks/mp-subscriptions` (suscripciones). Registrar cada URL en su respectiva app de MP.
-- **Flujo de pago con tarjeta**: El Payment Brick llama `onSubmit` → frontend POST a `/api/v1/payments/process` → backend crea el pago con MP SDK → navega a `/payment-success`. El webhook también llega y tiene guardia de idempotencia.
-- **Flujo de suscripción**: Frontend POST a `/api/v1/subscriptions` → backend crea Preapproval en MP → devuelve `init_point` → `window.location.href = init_point` → usuario autoriza en MP → webhook `subscription_preapproval` activa la suscripción.
+- **Dos endpoints de webhook**:
+  - `/api/v1/webhooks/mp` → App de pagos únicos. Valida con `MP_WEBHOOK_SECRET`. Solo procesa `type=payment`.
+  - `/api/v1/webhooks/mp-subscriptions` → App de suscripciones. Valida con `MP_SUBSCRIPTION_WEBHOOK_SECRET`. Solo procesa `subscription_preapproval` y `subscription_authorized_payment`.
+  - La URL del segundo endpoint se incluye como `notification_url` en cada preapproval creado (construida desde `config.publicUrl`).
+- **Flujo de pago con tarjeta**: El Payment Brick llama `onSubmit` → frontend POST a `/api/v1/payments/process` → backend crea el pago con MP SDK → navega a `/payment-success`. Si MP rechaza, se lanza `throw new Error(mensaje)` para que el brick re-habilite su formulario.
+- **Flujo de suscripción**: Frontend POST a `/api/v1/subscriptions` → backend crea Preapproval en MP con `notification_url` → devuelve `init_point` → `window.location.href = init_point` → usuario autoriza en MP → webhook `subscription_preapproval` activa la suscripción.
 - **Frecuencia de facturación**: `billingDays = product.servingsPerContainer - 3`.
 - **Descuento de lealtad**: 5% si el usuario ya tuvo una suscripción previa del mismo producto.
-- **AdminJS** está disponible en `/admin` del backend. Las credenciales vienen de `ADMIN_EMAIL` y `ADMIN_PASSWORD`.
+- **Para aprobar un pago de prueba MP**: usa el nombre `APRO` en el campo "Nombre en la tarjeta" al pagar.
+- **AdminJS** está disponible en `/admin` del backend.
 - **Prisma Decimal**: Siempre convertir con `Number()` antes de operar matemáticamente con precios.
-- **El startup guard en `config.js`** hace que el servidor falle rápido en producción si faltan variables de entorno críticas.
+- **El startup guard en `config.js`** falla rápido en producción si faltan variables críticas (incluyendo `MP_SUBSCRIPTION_WEBHOOK_SECRET`).

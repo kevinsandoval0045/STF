@@ -156,6 +156,9 @@ export class PaymentService {
             payer_email: email,
             external_reference: subscriptionId,
             back_url: `${backUrlBase}/subscription-success`,
+            // Tell MP where to send subscription webhook events.
+            // Must point to the dedicated endpoint that validates with MP_SUBSCRIPTION_WEBHOOK_SECRET.
+            notification_url: `${config.publicUrl}/api/v1/webhooks/mp-subscriptions`,
             status: 'pending',
         };
 

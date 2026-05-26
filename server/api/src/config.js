@@ -63,14 +63,15 @@ export const config = {
  */
 if (config.nodeEnv === 'production') {
   const required = {
-    DATABASE_URL:               config.databaseUrl,
-    MERCADOPAGO_ACCESS_TOKEN:   config.mercadoPagoAccessToken,
-    MP_WEBHOOK_SECRET:          config.mpWebhookSecret,
-    PUBLIC_URL:                 config.publicUrl,
-    FRONTEND_URL:               config.frontendUrl,
-    JWT_SECRET:                 config.jwtSecret,
-    SESSION_SECRET:             config.sessionSecret,
-    RESEND_API_KEY:             config.resendApiKey,
+    DATABASE_URL:                       config.databaseUrl,
+    MERCADOPAGO_ACCESS_TOKEN:           config.mercadoPagoAccessToken,
+    MP_WEBHOOK_SECRET:                  config.mpWebhookSecret,
+    MP_SUBSCRIPTION_WEBHOOK_SECRET:     config.mpSubscriptionWebhookSecret,
+    PUBLIC_URL:                         config.publicUrl,
+    FRONTEND_URL:                       config.frontendUrl,
+    JWT_SECRET:                         config.jwtSecret,
+    SESSION_SECRET:                     config.sessionSecret,
+    RESEND_API_KEY:                     config.resendApiKey,
   };
 
   const missing = Object.entries(required)

@@ -194,30 +194,44 @@ router.post('/mp', (req, res) => {
 });
 
 // ── /mp-subscriptions — App de suscripciones (Preapproval) ───────────────────
+// notification_url is set in createPreapproval → config.publicUrl/api/v1/webhooks/mp-subscriptions
+// Validated with MP_SUBSCRIPTION_WEBHOOK_SECRET (separate from payments app secret).
 router.post('/mp-subscriptions', (req, res) => {
-    res.status(200).send('OK');
-
+    // Verify HMAC before anything else.
+    // NOTE: we still respond 200 — MP retries on non-200, which would flood logs.
+    // Signature failures are logged as errors for monitoring purposes.
     if (!verifyMpSignature(req, config.mpSubscriptionWebhookSecret, 'subscriptions')) {
-        console.error('❌ [Webhook/subscriptions] Signature verification failed — ignoring event');
-        return;
+        console.error('❌ [Webhook/subscriptions] Signature verification failed — event discarded');
+        // Respond 200 to prevent MP from retrying an invalid request indefinitely
+        return res.status(200).send('OK');
     }
+
+    // Respond 200 immediately — MP requires a response within 5 s
+    res.status(200).send('OK');
 
     const { type, action } = req.body;
     const dataId = req.query['data.id'] || req.body?.data?.id;
 
-    console.log(`🔔 [Webhook/subscriptions] type=${type}, action=${action}, dataId=${dataId}`);
-
+    // Guard: both type and dataId are required to process any event
     if (!type || !dataId) {
-        console.warn('⚠️  [Webhook/subscriptions] Missing type or data.id — ignoring');
+        console.warn(`⚠️  [Webhook/subscriptions] Missing type or data.id — ignoring (type=${type}, dataId=${dataId})`);
         return;
     }
 
-    if (type === 'subscription_preapproval' || type === 'subscription_authorized_payment') {
+    console.log(`🔔 [Webhook/subscriptions] type=${type}, action=${action}, dataId=${dataId}`);
+
+    const SUBSCRIPTION_TYPES = new Set([
+        'subscription_preapproval',        // lifecycle: authorized, cancelled, paused
+        'subscription_authorized_payment', // recurring charge processed
+    ]);
+
+    if (SUBSCRIPTION_TYPES.has(type)) {
         subscriptionService.handleWebhookEvent(type, String(dataId)).catch((err) => {
-            console.error('❌ [Webhook/subscriptions] Error processing subscription event:', err.message);
+            console.error(`❌ [Webhook/subscriptions] Error handling ${type} (dataId=${dataId}):`, err.message);
         });
     } else {
-        console.warn(`⚠️  [Webhook/subscriptions] Unexpected event type "${type}" on subscriptions endpoint — ignoring`);
+        // Log unexpected types so they're visible in Railway without breaking anything
+        console.warn(`⚠️  [Webhook/subscriptions] Unhandled event type "${type}" — ignoring`);
     }
 });
 

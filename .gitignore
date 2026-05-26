@@ -42,3 +42,7 @@ desktop.ini
 # ── Ngrok ─────────────────────────────────────
 ngrok.yml
 .ngrok2/
+
+# ── Documentación local (no subir al repo) ────
+# Memoria del proyecto — solo para uso del asistente en local
+PROJECT_CONTEXT.md
