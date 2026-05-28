@@ -45,8 +45,8 @@ export default function CheckoutPage() {
     // Only address fields — name/email/phone come from the user's account
     const [addressForm, setAddressForm] = useState({
         address: user?.address || '',
-        city:    user?.city    || '',
-        state:   user?.state   || '',
+        city: user?.city || '',
+        state: user?.state || '',
         zipCode: user?.zipCode || '',
     });
     const [loading, setLoading] = useState(false);
@@ -65,8 +65,8 @@ export default function CheckoutPage() {
         if (user) {
             setAddressForm({
                 address: user.address || '',
-                city:    user.city    || '',
-                state:   user.state   || '',
+                city: user.city || '',
+                state: user.state || '',
                 zipCode: user.zipCode || '',
             });
             // If user already has address, show the card (not the form)
@@ -86,8 +86,8 @@ export default function CheckoutPage() {
         // Resolve address: use form values if editing, otherwise use saved profile
         const resolvedAddress = editingAddress ? addressForm : {
             address: user.address,
-            city:    user.city,
-            state:   user.state,
+            city: user.city,
+            state: user.state,
             zipCode: user.zipCode,
         };
 
@@ -104,9 +104,9 @@ export default function CheckoutPage() {
                 items: cart.map((item) => ({ id: item.id, quantity: item.quantity })),
                 customerInfo: {
                     firstName: user.firstName,
-                    lastName:  user.lastName,
-                    email:     user.email,
-                    phone:     user.phone || '',
+                    lastName: user.lastName,
+                    email: user.email,
+                    phone: user.phone || '',
                     ...resolvedAddress,
                 },
             };
@@ -115,10 +115,10 @@ export default function CheckoutPage() {
 
             setPreferenceId(result.preferenceId);
             setOrderSummary({
-                orderId:       result.orderId,
-                orderNumber:   result.orderNumber,
+                orderId: result.orderId,
+                orderNumber: result.orderNumber,
                 trackingToken: result.trackingToken,
-                totalAmount:   result.totalAmount,
+                totalAmount: result.totalAmount,
             });
             setStep(2);
             clearCart();
@@ -149,45 +149,57 @@ export default function CheckoutPage() {
         // Guard: if there's no orderId we can't process (shouldn't happen in practice)
         if (!orderSummary?.orderId) {
             console.error('[Checkout] onPaymentSubmit called but orderId is missing');
-            return;
+            throw new Error('Error interno: no se encontró el pedido. Por favor, recarga la página.');
         }
 
-        // POST to our backend, which calls MP's API with the authoritative amount from DB
-        const { data } = await api.post('/payments/process', {
-            orderId: orderSummary.orderId,
-            formData,
-        });
+        try {
+            // POST to our backend, which calls MP's API with the authoritative amount from DB
+            const { data } = await api.post('/payments/process', {
+                orderId: orderSummary.orderId,
+                formData,
+            });
 
-        const { status, statusDetail } = data;
-        console.log(`[Checkout] Payment result: ${status} / ${statusDetail} (method: ${selectedPaymentMethod})`);
+            const { status, statusDetail } = data;
+            console.log(`[Checkout] Payment result: ${status} / ${statusDetail} (method: ${selectedPaymentMethod})`);
 
-        if (status === 'approved') {
-            navigate(
-                `/payment-success?orderNumber=${encodeURIComponent(orderSummary.orderNumber)}&trackingToken=${encodeURIComponent(orderSummary.trackingToken)}`
-            );
-        } else if (status === 'pending' || status === 'in_process') {
-            // Common for some bank transfers / 3DS flows that settle asynchronously
-            navigate(
-                `/payment-success?orderNumber=${encodeURIComponent(orderSummary.orderNumber)}&trackingToken=${encodeURIComponent(orderSummary.trackingToken)}&pending=true`
-            );
-        } else {
-            // Payment was rejected by MP. Throwing an Error here is required:
-            // the Payment Brick listens for a rejected promise and automatically
-            // re-enables its form so the user can correct their data and retry.
-            const REJECTION_MESSAGES = {
-                cc_rejected_bad_filled_card_number: 'Número de tarjeta incorrecto. Verifica los datos.',
-                cc_rejected_bad_filled_date:         'Fecha de vencimiento incorrecta.',
-                cc_rejected_bad_filled_other:        'Datos de tarjeta incorrectos. Intenta de nuevo.',
-                cc_rejected_bad_filled_security_code:'Código de seguridad (CVV) incorrecto.',
-                cc_rejected_blacklist:               'Esta tarjeta no puede procesar el pago.',
-                cc_rejected_call_for_authorize:      'Comunícate con tu banco para autorizar el pago.',
-                cc_rejected_card_disabled:           'La tarjeta está deshabilitada. Usa otra tarjeta.',
-                cc_rejected_insufficient_amount:     'Fondos insuficientes en la tarjeta.',
-                cc_rejected_invalid_installments:    'El número de cuotas seleccionado no está disponible.',
-                cc_rejected_max_attempts:            'Límite de intentos alcanzado. Intenta más tarde.',
-            };
-            const message = REJECTION_MESSAGES[statusDetail]
-                ?? 'El pago fue rechazado. Verifica tus datos o intenta con otra tarjeta.';
+            if (status === 'approved') {
+                navigate(
+                    `/payment-success?orderNumber=${encodeURIComponent(orderSummary.orderNumber)}&trackingToken=${encodeURIComponent(orderSummary.trackingToken)}`
+                );
+            } else if (status === 'pending' || status === 'in_process') {
+                // Common for some bank transfers / 3DS flows that settle asynchronously
+                navigate(
+                    `/payment-success?orderNumber=${encodeURIComponent(orderSummary.orderNumber)}&trackingToken=${encodeURIComponent(orderSummary.trackingToken)}&pending=true`
+                );
+            } else {
+                // Payment was rejected by MP. Throwing an Error here is required:
+                // the Payment Brick listens for a rejected promise and automatically
+                // re-enables its form so the user can correct their data and retry.
+                const REJECTION_MESSAGES = {
+                    cc_rejected_bad_filled_card_number: 'Número de tarjeta incorrecto. Verifica los datos.',
+                    cc_rejected_bad_filled_date: 'Fecha de vencimiento incorrecta.',
+                    cc_rejected_bad_filled_other: 'Datos de tarjeta incorrectos. Intenta de nuevo.',
+                    cc_rejected_bad_filled_security_code: 'Código de seguridad (CVV) incorrecto.',
+                    cc_rejected_blacklist: 'Esta tarjeta no puede procesar el pago.',
+                    cc_rejected_call_for_authorize: 'Comunícate con tu banco para autorizar el pago.',
+                    cc_rejected_card_disabled: 'La tarjeta está deshabilitada. Usa otra tarjeta.',
+                    cc_rejected_insufficient_amount: 'Fondos insuficientes en la tarjeta.',
+                    cc_rejected_invalid_installments: 'El número de cuotas seleccionado no está disponible.',
+                    cc_rejected_max_attempts: 'Límite de intentos alcanzado. Intenta más tarde.',
+                };
+                const message = REJECTION_MESSAGES[statusDetail]
+                    ?? 'El pago fue rechazado. Verifica tus datos o intenta con otra tarjeta.';
+                throw new Error(message);
+            }
+        } catch (err) {
+            // Normalize ANY error (Axios HTTP errors, network errors, etc.) to a plain Error
+            // so the MP Payment Brick can handle it cleanly without "Failed to convert value to Response".
+            // Re-throw errors that are already standard Error instances (e.g. the rejection throw above).
+            const message =
+                err?.response?.data?.message ||
+                err?.response?.data?.error ||
+                err?.message ||
+                'Error al procesar el pago. Por favor, intenta de nuevo.';
             throw new Error(message);
         }
     }, [orderSummary, navigate]);

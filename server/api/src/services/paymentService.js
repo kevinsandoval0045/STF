@@ -163,12 +163,18 @@ export class PaymentService {
         };
 
         try {
+            // Build headers — MP requires 'X-scope: stage' when using test credentials
+            const headers = {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
+            };
+            if (config.mercadoPagoSubscriptionToken.startsWith('TEST-')) {
+                headers['X-scope'] = 'stage';
+            }
+
             const res = await fetch('https://api.mercadopago.com/preapproval', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
-                },
+                headers,
                 body: JSON.stringify(body),
             });
 
@@ -196,12 +202,17 @@ export class PaymentService {
      */
     async cancelPreapproval(mpPreapprovalId) {
         try {
+            const headers = {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
+            };
+            if (config.mercadoPagoSubscriptionToken.startsWith('TEST-')) {
+                headers['X-scope'] = 'stage';
+            }
+
             const res = await fetch(`https://api.mercadopago.com/preapproval/${mpPreapprovalId}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
-                },
+                headers,
                 body: JSON.stringify({ status: 'cancelled' }),
             });
 
@@ -228,11 +239,16 @@ export class PaymentService {
      */
     async getPreapproval(mpPreapprovalId) {
         try {
+            const headers = {
+                Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
+            };
+            if (config.mercadoPagoSubscriptionToken.startsWith('TEST-')) {
+                headers['X-scope'] = 'stage';
+            }
+
             const res = await fetch(`https://api.mercadopago.com/preapproval/${mpPreapprovalId}`, {
                 method: 'GET',
-                headers: {
-                    Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
-                },
+                headers,
             });
 
             const data = await res.json();

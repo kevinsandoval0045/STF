@@ -128,6 +128,8 @@ Toda instanciación ocurre en `container.js`. Las clases reciben sus dependencia
 - [x] ~~`MP_SUBSCRIPTION_WEBHOOK_SECRET` en startup guard de producción~~ ✅ Hecho 2026-05-26
 - [x] ~~URL de despliegue del frontend~~ ✅ `https://stf-two.vercel.app` (Vercel)
 - [ ] Corregir `RESEND_API_KEY` en Railway (actualmente inválida — emails fallan en producción).
+- [x] ~~**Actualizar `MP_SUBSCRIPTION_TOKEN` en Railway**~~ ✅ Hecho 2026-05-28
+- [x] ~~**Agregar header `X-scope: stage` en peticiones a `/preapproval`**~~ ✅ Hecho 2026-05-28 — requerido por MP al usar tokens `TEST-`
 - [ ] Validar flujo completo de suscripción en producción (webhook `subscription_preapproval` activando suscripción).
 - [ ] Probar pago aprobado con tarjeta de prueba MP (usar `APRO` como nombre en la tarjeta).
 
@@ -162,6 +164,9 @@ Toda instanciación ocurre en `container.js`. Las clases reciben sus dependencia
 | 2026-05-26 | `MP_SUBSCRIPTION_WEBHOOK_SECRET` no estaba en el startup guard | Se olvidó agregar la nueva variable al bloque `required` de `config.js` | Añadida al guard de producción | Cada nueva variable crítica debe agregarse al startup guard inmediatamente |
 | 2026-05-26 | `onPaymentSubmit` no lanzaba error en pagos rechazados | El Payment Brick requiere un `throw` para re-habilitar su formulario | Se agregó `throw new Error(mensaje)` con mensajes especínficos por `statusDetail` | Siempre `throw` en rechazo de MP — nunca retornar undefined silenciosamente |
 | 2026-05-26 | Órdenes PENDING visibles en historial como si fueran confirmadas | No se separaban en el UI — `getMyOrders` devuelve todo | Se separaron en `pendingOrders` / `confirmedOrders` en `ProfilePage.jsx` | Los `PENDING` son checkouts incompletos; no mezclar con compras confirmadas |
+| 2026-05-27 | `Failed to convert value to 'Response'` en el browser al pagar | `onPaymentSubmit` del Payment Brick no envolvía el `await api.post(...)` en try/catch — errores de Axios (objetos, no instancias de Error) eran re-lanzados directamente y el SDK de MP no podía convertirlos | Se envolvió toda la lógica de `onPaymentSubmit` en try/catch; cualquier error se normaliza a `new Error(mensaje)` antes de relanzar | El Payment Brick solo puede manejar `Error` estándar; envolver SIEMPRE el `onSubmit` en try/catch |
+| 2026-05-27 | `PA_UNAUTHORIZED_RESULT_FROM_POLICIES` 403 al simular webhook de suscripción | La simulación del panel MP envía `data.id=123456` (ID ficticio). El webhook responde 200 OK correctamente, pero luego intenta `getPreapproval("123456")` y MP rechaza porque el ID no existe | Sin corrección — es comportamiento esperado en simulaciones del panel. Solo ocurre con IDs falsos | Al simular webhooks desde el panel de MP, el `data.id` es ficticio; el 403 en el lookup posterior es normal y no indica un bug |
+| 2026-05-27 | `PA_UNAUTHORIZED_RESULT_FROM_POLICIES` 403 al crear preapproval real | **Faltaba el header `X-scope: stage`** en las peticiones a `/preapproval`. La documentación oficial de MP lo requiere obligatoriamente al usar credenciales de prueba (`TEST-...`). Sin él, MP rechaza con 403 aunque el token sea válido | Se agregó `X-scope: stage` condicionalmente en `createPreapproval`, `cancelPreapproval` y `getPreapproval` cuando el token empieza con `TEST-` | Al usar credenciales de prueba con la API de Preapproval, SIEMPRE incluir `X-scope: stage` en los headers |
 
 ---
 
@@ -322,6 +327,8 @@ git add . && git commit -m "mensaje" && git push
 ## 15. Notas para futuras sesiones
 
 - **Dos aplicaciones en Mercado Pago**: una para pagos únicos (Checkout Bricks) y otra para suscripciones (Preapproval). Cada una tiene su propio `Access Token` y `Webhook Secret`. Los tokens están en Railway como `MERCADOPAGO_ACCESS_TOKEN` y `MP_SUBSCRIPTION_TOKEN`.
+- **CRÍTICO — Token correcto para suscripciones**: El `MP_SUBSCRIPTION_TOKEN` DEBE ser el Access Token de la app `STF SUSCRIPCIONES` (ID `5664783186019558`) obtenido desde la **cuenta principal** de MP en [developers/panel/app](https://mercadopago.com/developers/panel/app) → STF SUSCRIPCIONES → Credenciales → Credenciales de prueba. NO usar tokens generados al iniciar sesión como usuario de prueba vendedor — esos tienen App IDs distintos y MP rechaza las llamadas a `/preapproval` con `PA_UNAUTHORIZED_RESULT_FROM_POLICIES`.
+- **CRÍTICO — Header `X-scope: stage` para sandbox**: Al usar credenciales de prueba (`TEST-...`) con la API de Preapproval, el header `X-scope: stage` es **obligatorio**. Sin él, MP devuelve `PA_UNAUTHORIZED_RESULT_FROM_POLICIES` (403). El código lo agrega automáticamente cuando el token empieza con `TEST-`.
 - **Dos endpoints de webhook**:
   - `/api/v1/webhooks/mp` → App de pagos únicos. Valida con `MP_WEBHOOK_SECRET`. Solo procesa `type=payment`.
   - `/api/v1/webhooks/mp-subscriptions` → App de suscripciones. Valida con `MP_SUBSCRIPTION_WEBHOOK_SECRET`. Solo procesa `subscription_preapproval` y `subscription_authorized_payment`.
@@ -334,3 +341,4 @@ git add . && git commit -m "mensaje" && git push
 - **AdminJS** está disponible en `/admin` del backend.
 - **Prisma Decimal**: Siempre convertir con `Number()` antes de operar matemáticamente con precios.
 - **El startup guard en `config.js`** falla rápido en producción si faltan variables críticas (incluyendo `MP_SUBSCRIPTION_WEBHOOK_SECRET`).
+- **Conexión a Mercado Pago MCP Server**: Configurado localmente en `~/.gemini/antigravity/mcp_config.json` usando el token del entorno sandbox. En la siguiente sesión, el asistente tendrá herramientas de búsqueda de documentación de Mercado Pago en tiempo real activas.
