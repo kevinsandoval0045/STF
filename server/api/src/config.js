@@ -1,6 +1,11 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+const readEnv = (name) => {
+  const value = process.env[name];
+  return typeof value === 'string' ? value.trim() : '';
+};
+
 /**
  * Centralized configuration.
  * All environment variables are read here and exported as a single object.
@@ -16,44 +21,43 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL,
 
   // CORS
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  corsOrigin: readEnv('CORS_ORIGIN') || 'http://localhost:5173',
 
   // JWT
-  jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+  jwtSecret: readEnv('JWT_SECRET') || 'dev-secret-change-in-production',
 
   // AdminJS Panel
-  adminEmail: process.env.ADMIN_EMAIL || 'admin@supplements.com',
-  adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
-  sessionSecret: process.env.SESSION_SECRET || 'dev-session-secret-change-in-production',
+  adminEmail: readEnv('ADMIN_EMAIL') || 'admin@supplements.com',
+  adminPassword: readEnv('ADMIN_PASSWORD') || 'admin123',
+  sessionSecret: readEnv('SESSION_SECRET') || 'dev-session-secret-change-in-production',
 
   // Mercado Pago — one-time payments (CheckoutBricks)
-  mercadoPagoAccessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || '',
+  mercadoPagoAccessToken: readEnv('MERCADOPAGO_ACCESS_TOKEN'),
 
   // Mercado Pago — subscriptions (preapproval).
   // Falls back to MERCADOPAGO_ACCESS_TOKEN if a separate subscription app is not configured.
-  mercadoPagoSubscriptionToken: process.env.MP_SUBSCRIPTION_TOKEN
-    || process.env.MERCADOPAGO_ACCESS_TOKEN
-    || '',
+  mercadoPagoSubscriptionToken: readEnv('MP_SUBSCRIPTION_TOKEN')
+    || readEnv('MERCADOPAGO_ACCESS_TOKEN'),
 
   // Webhook — Mercado Pago (app de pagos únicos)
-  mpWebhookSecret: process.env.MP_WEBHOOK_SECRET || '',
+  mpWebhookSecret: readEnv('MP_WEBHOOK_SECRET'),
   // Webhook — Mercado Pago (app de suscripciones — puede ser diferente secret)
-  mpSubscriptionWebhookSecret: process.env.MP_SUBSCRIPTION_WEBHOOK_SECRET || '',
-  publicUrl: process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 8080}`,
+  mpSubscriptionWebhookSecret: readEnv('MP_SUBSCRIPTION_WEBHOOK_SECRET'),
+  publicUrl: readEnv('PUBLIC_URL') || `http://localhost:${process.env.PORT || 8080}`,
 
   // Frontend URL — used to build back_urls in payment preferences.
   // In dev: the Vite dev server (port 5173).
   // In prod: set FRONTEND_URL to the public domain (e.g. https://kassupplements.com).
-  frontendUrl: process.env.FRONTEND_URL
+  frontendUrl: readEnv('FRONTEND_URL')
     || (process.env.NODE_ENV === 'production'
       ? '' // will fail loudly in prod if not set — intentional
       : 'http://localhost:5173'),
 
   // Resend (Email)
-  resendApiKey: process.env.RESEND_API_KEY || '',
-  resendFrom: process.env.RESEND_FROM || 'KAS Supplements <onboarding@resend.dev>',
+  resendApiKey: readEnv('RESEND_API_KEY'),
+  resendFrom: readEnv('RESEND_FROM') || 'KAS Supplements <onboarding@resend.dev>',
   // In dev (no verified domain) all emails go to this address
-  resendDevTo: process.env.RESEND_DEV_TO || '',
+  resendDevTo: readEnv('RESEND_DEV_TO'),
 };
 
 /**

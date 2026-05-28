@@ -48,9 +48,12 @@ function verifyMpSignature(req, secret, label = 'webhook') {
         return true;
     }
 
-    const xSignature = req.headers['x-signature'];
-    const xRequestId = req.headers['x-request-id'];
-    const dataId = req.query['data.id'];
+    const xSignatureHeader = req.headers['x-signature'];
+    const xRequestIdHeader = req.headers['x-request-id'];
+    const queryDataIdRaw = req.query['data.id'];
+    const xSignature = Array.isArray(xSignatureHeader) ? xSignatureHeader[0] : xSignatureHeader;
+    const xRequestId = Array.isArray(xRequestIdHeader) ? xRequestIdHeader[0] : xRequestIdHeader;
+    const queryDataId = Array.isArray(queryDataIdRaw) ? queryDataIdRaw[0] : queryDataIdRaw;
 
     if (!xSignature) {
         console.warn(`⚠️  [Webhook/${label}] Missing x-signature header`);
@@ -59,7 +62,7 @@ function verifyMpSignature(req, secret, label = 'webhook') {
 
     // Parse ts and v1 from x-signature header
     // Format: "ts=1704908010,v1=618c85345248dd820d5fd456117c2ab2ef8eda45a0282ff693eac24131a5e839"
-    const parts = xSignature.split(',');
+    const parts = String(xSignature).split(',');
     let ts = '';
     let hash = '';
 
@@ -75,8 +78,23 @@ function verifyMpSignature(req, secret, label = 'webhook') {
         return false;
     }
 
-    // Build the manifest string per MP docs
-    const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
+    // Build the manifest string per MP docs:
+    // id:[data.id_url];request-id:[x-request-id_header];ts:[ts_header];
+    // If a component is missing, it must be omitted from the manifest.
+    // data.id should be lowercase before signing.
+    const dataId = typeof queryDataId === 'string' ? queryDataId.trim().toLowerCase() : '';
+    const requestId = typeof xRequestId === 'string' ? xRequestId.trim() : '';
+    const manifestParts = [];
+    if (dataId) manifestParts.push(`id:${dataId}`);
+    if (requestId) manifestParts.push(`request-id:${requestId}`);
+    if (ts) manifestParts.push(`ts:${ts}`);
+
+    if (manifestParts.length === 0) {
+        console.warn(`⚠️  [Webhook/${label}] Could not build manifest (missing id/request-id/ts)`);
+        return false;
+    }
+
+    const manifest = `${manifestParts.join(';')};`;
 
     // Compute HMAC-SHA256 with timing-safe comparison
     const computed = crypto.createHmac('sha256', secret).update(manifest).digest('hex');

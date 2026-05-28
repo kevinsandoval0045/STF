@@ -287,8 +287,14 @@ export class SubscriptionService {
             // We need to look up which subscription it belongs to via MP API
             // Use the subscription token — this payment was charged by the subscriptions app.
             // If MP_SUBSCRIPTION_TOKEN is not set, it falls back to the main token (same app).
+            const subscriptionToken = String(config.mercadoPagoSubscriptionToken || '').trim();
+            const headers = { Authorization: `Bearer ${subscriptionToken}` };
+            if (subscriptionToken.startsWith('TEST-')) {
+                headers['X-scope'] = 'stage';
+            }
+
             const paymentRes = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
-                headers: { Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}` },
+                headers,
             });
 
             if (!paymentRes.ok) {

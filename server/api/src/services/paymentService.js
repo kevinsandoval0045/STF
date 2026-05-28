@@ -18,6 +18,35 @@ export class PaymentService {
         this.payment = new Payment(this.client);
     }
 
+    #getSubscriptionToken() {
+        return String(config.mercadoPagoSubscriptionToken || '').trim();
+    }
+
+    #buildSubscriptionHeaders(includeJsonContentType = false) {
+        const token = this.#getSubscriptionToken();
+
+        if (!token) {
+            const err = new Error('MP_SUBSCRIPTION_TOKEN is not configured');
+            err.statusCode = 500;
+            throw err;
+        }
+
+        const headers = {
+            Authorization: `Bearer ${token}`,
+        };
+
+        if (includeJsonContentType) {
+            headers['Content-Type'] = 'application/json';
+        }
+
+        // Required by Mercado Pago when using TEST credentials in preapproval APIs.
+        if (token.startsWith('TEST-')) {
+            headers['X-scope'] = 'stage';
+        }
+
+        return headers;
+    }
+
     /**
      * Create a Mercado Pago preference for an order.
      *
@@ -145,6 +174,9 @@ export class PaymentService {
      * @returns {Object} - { id: mpPreapprovalId, init_point }
      */
     async createPreapproval({ billingDays, amount, productName, email, subscriptionId, backUrlBase }) {
+        const publicBaseUrl = String(config.publicUrl || '').trim().replace(/\/+$/, '');
+        const normalizedBackUrlBase = String(backUrlBase || '').trim().replace(/\/+$/, '');
+
         const body = {
             reason: `${productName} — Suscripción KAS Supplements`,
             auto_recurring: {
@@ -155,22 +187,15 @@ export class PaymentService {
             },
             payer_email: email,
             external_reference: subscriptionId,
-            back_url: `${backUrlBase}/subscription-success`,
+            back_url: `${normalizedBackUrlBase}/subscription-success`,
             // Tell MP where to send subscription webhook events.
             // Must point to the dedicated endpoint that validates with MP_SUBSCRIPTION_WEBHOOK_SECRET.
-            notification_url: `${config.publicUrl}/api/v1/webhooks/mp-subscriptions`,
+            notification_url: `${publicBaseUrl}/api/v1/webhooks/mp-subscriptions`,
             status: 'pending',
         };
 
         try {
-            // Build headers — MP requires 'X-scope: stage' when using test credentials
-            const headers = {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
-            };
-            if (config.mercadoPagoSubscriptionToken.startsWith('TEST-')) {
-                headers['X-scope'] = 'stage';
-            }
+            const headers = this.#buildSubscriptionHeaders(true);
 
             const res = await fetch('https://api.mercadopago.com/preapproval', {
                 method: 'POST',
@@ -182,7 +207,12 @@ export class PaymentService {
 
             if (!res.ok) {
                 console.error('❌ MP createPreapproval error:', JSON.stringify(data, null, 2));
-                const err = new Error(data.message || 'Failed to create preapproval');
+                const isPolicyUnauthorized = data?.code === 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES';
+                const err = new Error(
+                    isPolicyUnauthorized
+                        ? `${data.message} Verifica: (1) MP_SUBSCRIPTION_TOKEN de la app correcta, (2) uso de usuarios de prueba comprador/vendedor, (3) secret y app de suscripciones.`
+                        : (data.message || 'Failed to create preapproval')
+                );
                 err.statusCode = res.status;
                 throw err;
             }
@@ -202,13 +232,7 @@ export class PaymentService {
      */
     async cancelPreapproval(mpPreapprovalId) {
         try {
-            const headers = {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
-            };
-            if (config.mercadoPagoSubscriptionToken.startsWith('TEST-')) {
-                headers['X-scope'] = 'stage';
-            }
+            const headers = this.#buildSubscriptionHeaders(true);
 
             const res = await fetch(`https://api.mercadopago.com/preapproval/${mpPreapprovalId}`, {
                 method: 'PUT',
@@ -239,12 +263,7 @@ export class PaymentService {
      */
     async getPreapproval(mpPreapprovalId) {
         try {
-            const headers = {
-                Authorization: `Bearer ${config.mercadoPagoSubscriptionToken}`,
-            };
-            if (config.mercadoPagoSubscriptionToken.startsWith('TEST-')) {
-                headers['X-scope'] = 'stage';
-            }
+            const headers = this.#buildSubscriptionHeaders(false);
 
             const res = await fetch(`https://api.mercadopago.com/preapproval/${mpPreapprovalId}`, {
                 method: 'GET',
