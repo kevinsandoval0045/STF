@@ -1,0 +1,48 @@
+# ──────────────────────────────────────────────
+# KAS Supplements — .gitignore (raíz del proyecto)
+# ──────────────────────────────────────────────
+
+# ── Variables de entorno (NUNCA subir al repo) ──
+.env
+.env.local
+.env.production
+.env.staging
+*.env
+
+# ── Dependencias ──────────────────────────────
+node_modules/
+
+# ── Builds / output ───────────────────────────
+dist/
+build/
+.adminjs/
+
+# ── Logs ──────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Sistema operativo ─────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor ────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Prisma ────────────────────────────────────
+# Archivos generados (se regeneran con prisma generate)
+/server/api/node_modules/.prisma/
+
+# ── Ngrok ─────────────────────────────────────
+ngrok.yml
+.ngrok2/
+
+# ── Documentación local (no subir al repo) ────
+# Memoria del proyecto — solo para uso del asistente en local
+PROJECT_CONTEXT.md

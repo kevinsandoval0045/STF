@@ -1,0 +1,46 @@
+{
+    "name": "supplements-api",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Supplements E-Commerce REST API — Express & Prisma",
+    "type": "module",
+    "main": "src/app.js",
+    "scripts": {
+        "start": "npx prisma migrate deploy && npx prisma generate && node src/app.js",
+        "dev": "nodemon src/app.js",
+        "seed": "node prisma/seed.js"
+    },
+    "nodemonConfig": {
+        "delay": 1500,
+        "ignore": ["prisma/migrations/*", "*.test.js"]
+    },
+    "prisma": {
+        "seed": "node prisma/seed.js"
+    },
+    "dependencies": {
+        "@adminjs/express": "^6.1.1",
+        "@adminjs/prisma": "^5.0.4",
+        "@prisma/client": "^5.0.0",
+        "adminjs": "^7.8.17",
+        "bcrypt": "^5.1.0",
+        "compression": "^1.8.1",
+        "connect-pg-simple": "^10.0.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.6.1",
+        "express": "^4.18.2",
+        "express-formidable": "^1.2.0",
+        "express-rate-limit": "^8.2.1",
+        "express-session": "^1.19.0",
+        "helmet": "^7.0.0",
+        "jsonwebtoken": "^9.0.1",
+        "mercadopago": "^2.12.0",
+        "pdfkit": "^0.18.0",
+        "resend": "^6.12.0",
+        "tslib": "^2.8.1",
+        "zod": "^3.21.4"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.1",
+        "prisma": "^5.0.0"
+    }
+}
