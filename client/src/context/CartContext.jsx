@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 /**
  * Cart Context — manages shopping cart state across the app.
@@ -13,6 +13,7 @@ const CartContext = createContext(null);
 
 // Key for localStorage persistence
 const CART_STORAGE_KEY = 'supplements-cart';
+const AUTH_LOGOUT_EVENT = 'auth:logout';
 
 /**
  * Load cart from localStorage (or return empty array).
@@ -32,8 +33,24 @@ export function CartProvider({ children }) {
 
     // Persist cart to localStorage whenever it changes
     useEffect(() => {
+        if (cart.length === 0) {
+            localStorage.removeItem(CART_STORAGE_KEY);
+            return;
+        }
         localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
     }, [cart]);
+
+    // When auth logs out, wipe in-memory cart and persisted cart.
+    useEffect(() => {
+        const handleAuthLogout = () => {
+            setCart([]);
+            setIsSidebarOpen(false);
+            localStorage.removeItem(CART_STORAGE_KEY);
+        };
+
+        window.addEventListener(AUTH_LOGOUT_EVENT, handleAuthLogout);
+        return () => window.removeEventListener(AUTH_LOGOUT_EVENT, handleAuthLogout);
+    }, []);
 
     /**
      * Add a product to the cart. If already in cart, increase quantity.

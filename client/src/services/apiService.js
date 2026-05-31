@@ -14,10 +14,14 @@ const api = axios.create({
     timeout: 10000,
 });
 
+const TOKEN_KEY = 'auth-token';
+const CART_STORAGE_KEY = 'supplements-cart';
+const AUTH_LOGOUT_EVENT = 'auth:logout';
+
 // ─── Auth Interceptor — Request ────────────────────────
 // Automatically attach JWT token to every request if available.
 api.interceptors.request.use((config) => {
-    const token = localStorage.getItem('auth-token');
+    const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
@@ -31,11 +35,13 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            const hadToken = !!localStorage.getItem('auth-token');
-            localStorage.removeItem('auth-token');
+            const hadToken = !!localStorage.getItem(TOKEN_KEY);
+            localStorage.removeItem(TOKEN_KEY);
             // Only hard-reload if the user was previously "logged in"
             // to avoid an infinite loop on the login form itself.
             if (hadToken) {
+                localStorage.removeItem(CART_STORAGE_KEY);
+                window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT));
                 window.location.href = '/';
             }
         }

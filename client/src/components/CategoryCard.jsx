@@ -1,10 +1,6 @@
 import { Link } from 'react-router-dom';
 
-/**
- * CategoryCard — displays a single category as a clickable card.
- * Shows an image (or a styled placeholder) and the category name.
- * Links to the category page at /categoria/:slug
- */
+
 export default function CategoryCard({ category }) {
     return (
         <Link

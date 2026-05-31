@@ -277,60 +277,98 @@ export class SubscriptionService {
     }
 
     /**
-     * Handle subscription_authorized_payment webhook — record the payment.
-     * MP sends this when a recurring payment is successfully charged.
+     * Handle subscription_authorized_payment webhook — record recurring charge data.
+     *
+     * NOTE:
+     * For this topic, `data.id` is the authorized payment (invoice) ID,
+     * not the Checkout API payment ID. We must query:
+     *   GET /authorized_payments/{id}
      */
-    async #handleAuthorizedPayment(mpPaymentId) {
-        // Check if we already processed this payment (idempotency)
+    async #handleAuthorizedPayment(mpAuthorizedPaymentId) {
         try {
-            // The dataId for this event type is the payment ID
-            // We need to look up which subscription it belongs to via MP API
-            // Use the subscription token — this payment was charged by the subscriptions app.
-            // If MP_SUBSCRIPTION_TOKEN is not set, it falls back to the main token (same app).
+            const authorizedPaymentId = String(mpAuthorizedPaymentId);
             const subscriptionToken = String(config.mercadoPagoSubscriptionToken || '').trim();
             const headers = { Authorization: `Bearer ${subscriptionToken}` };
             if (subscriptionToken.startsWith('TEST-')) {
                 headers['X-scope'] = 'stage';
             }
 
-            const paymentRes = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
+            const authorizedRes = await fetch(`https://api.mercadopago.com/authorized_payments/${authorizedPaymentId}`, {
                 headers,
             });
 
-            if (!paymentRes.ok) {
-                console.error(`❌ [Webhook] Failed to fetch payment ${mpPaymentId}`);
+            if (!authorizedRes.ok) {
+                let details = '';
+                try {
+                    const errData = await authorizedRes.json();
+                    details = errData?.message ? ` (${errData.message})` : '';
+                } catch {
+                    // ignore json parse errors
+                }
+                console.error(`❌ [Webhook] Failed to fetch authorized payment ${authorizedPaymentId}: HTTP ${authorizedRes.status}${details}`);
                 return;
             }
 
-            const payment = await paymentRes.json();
+            const authorizedPayment = await authorizedRes.json();
 
-            // Find our subscription by the preapproval ID stored in the payment
-            const preapprovalId = payment.metadata?.preapproval_id;
+            // These events can arrive as created/updated and not always imply
+            // a successful charge yet. Only persist when the underlying payment
+            // (or summary) indicates an approved/charged result.
+            const nestedPaymentStatus = String(authorizedPayment.payment?.status || '').toLowerCase();
+            const summarizedStatus = String(authorizedPayment.summarized || '').toLowerCase();
+            const invoiceStatus = String(authorizedPayment.status || '').toLowerCase();
+
+            const chargeApproved = (
+                nestedPaymentStatus === 'approved'
+                || summarizedStatus === 'approved'
+                || summarizedStatus === 'charged'
+            );
+
+            if (!chargeApproved) {
+                console.log(`ℹ️  [Webhook] Authorized payment ${authorizedPaymentId} not approved yet (payment=${nestedPaymentStatus || 'n/a'}, summarized=${summarizedStatus || 'n/a'}, status=${invoiceStatus || 'n/a'})`);
+                return;
+            }
+
+            // Resolve subscription
+            const preapprovalId = authorizedPayment.preapproval_id ? String(authorizedPayment.preapproval_id) : '';
             let subscription;
 
             if (preapprovalId) {
                 subscription = await this.subscriptionRepository.findByMpPreapprovalId(preapprovalId);
             }
 
-            // Fallback: try external_reference
-            if (!subscription && payment.external_reference) {
-                subscription = await this.subscriptionRepository.findById(payment.external_reference);
+            // Fallback: use external_reference if it contains our subscription UUID
+            if (!subscription && authorizedPayment.external_reference) {
+                subscription = await this.subscriptionRepository.findById(String(authorizedPayment.external_reference));
             }
 
             if (!subscription) {
-                console.warn(`⚠️  [Webhook] No subscription found for payment ${mpPaymentId}`);
+                console.warn(`⚠️  [Webhook] No subscription found for authorized payment ${authorizedPaymentId} (preapproval_id=${preapprovalId || 'n/a'})`);
                 return;
             }
 
-            // Record the payment
-            await this.subscriptionRepository.createPayment({
-                subscriptionId: subscription.id,
-                mpPaymentId: String(mpPaymentId),
-                status: payment.status || 'charged',
-                amount: payment.transaction_amount || Number(subscription.amount),
-            });
+            // Prefer real payment ID when provided; fallback to authorized_payment ID.
+            const mpPaymentId = String(authorizedPayment.payment?.id || authorizedPayment.id || authorizedPaymentId);
+            const amount = Number(authorizedPayment.transaction_amount ?? subscription.amount);
+            const paymentStatus = nestedPaymentStatus || summarizedStatus || invoiceStatus || 'approved';
 
-            // Update nextBillingDate
+            // Idempotency: created+updated can refer to the same charge.
+            try {
+                await this.subscriptionRepository.createPayment({
+                    subscriptionId: subscription.id,
+                    mpPaymentId,
+                    status: paymentStatus,
+                    amount,
+                });
+            } catch (err) {
+                if (err?.code === 'P2002') {
+                    console.log(`ℹ️  [Webhook] Recurring payment ${mpPaymentId} already recorded — skipping duplicate`);
+                    return;
+                }
+                throw err;
+            }
+
+            // Update nextBillingDate from now
             const next = new Date();
             next.setDate(next.getDate() + subscription.billingDays);
             await this.subscriptionRepository.updateStatus(
@@ -339,21 +377,21 @@ export class SubscriptionService {
                 next
             );
 
-            console.log(`✅ [Webhook] Payment ${mpPaymentId} recorded for subscription ${subscription.id}`);
+            console.log(`✅ [Webhook] Recurring payment ${mpPaymentId} recorded for subscription ${subscription.id} (authorized_payment=${authorizedPaymentId})`);
 
-            // Notify customer about the successful recurring charge (fire-and-forget)
+            // Notify customer about successful recurring charge (fire-and-forget)
             this.emailService.sendSubscriptionCharged({
                 email:          subscription.email,
                 firstName:      subscription.firstName,
                 productName:    subscription.product?.name || 'tu producto',
-                amount:         payment.transaction_amount || Number(subscription.amount),
+                amount,
                 nextBillingDate: next,
                 billingDays:    subscription.billingDays,
                 subscriptionId: subscription.id,
-                mpPaymentId:    String(mpPaymentId),
+                mpPaymentId,
             });
         } catch (err) {
-            console.error(`❌ [Webhook] Error processing payment ${mpPaymentId}:`, err.message);
+            console.error(`❌ [Webhook] Error processing authorized payment ${mpAuthorizedPaymentId}:`, err.message);
         }
     }
 }
