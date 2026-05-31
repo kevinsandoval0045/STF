@@ -15,6 +15,8 @@ import { useToast } from './ToastContext.jsx';
 const AuthContext = createContext(null);
 
 const TOKEN_KEY = 'auth-token';
+const CART_STORAGE_KEY = 'supplements-cart';
+const AUTH_LOGOUT_EVENT = 'auth:logout';
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
@@ -73,6 +75,8 @@ export function AuthProvider({ children }) {
      */
     const logout = useCallback(() => {
         localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(CART_STORAGE_KEY);
+        window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT));
         setUser(null);
         setAuthRedirect(null);
         addToast('Sesión cerrada correctamente.', 'info');
