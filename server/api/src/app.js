@@ -65,7 +65,7 @@ app.get('/api/v1/health', (req, res) => {
  * GET /subscription-success → http://localhost:5173/subscription-success
  */
 app.get('/subscription-success', (req, res) => {
-    const frontendUrl = config.corsOrigin || 'http://localhost:5173';
+    const frontendUrl = config.frontendUrl || config.corsOrigin || 'http://localhost:5173';
     const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
     res.redirect(302, `${frontendUrl}/subscription-success${qs}`);
 });

@@ -1,256 +1,141 @@
 import { Router } from 'express';
-import crypto from 'crypto';
 import { config } from '../config.js';
 import { subscriptionService, orderService } from '../container.js';
+import { verifyMpSignature } from '../utils/mercadoPagoWebhookSignature.js';
 
 /**
- * Webhook Routes — Mercado Pago notifications.
+ * Build Mercado Pago webhook routes.
  *
- * POST /api/v1/webhooks/mp
- *   → App de pagos únicos (Checkout Bricks)
- *   → Valida con MP_WEBHOOK_SECRET
- *   → Solo maneja eventos type="payment"
- *
- * POST /api/v1/webhooks/mp-subscriptions
- *   → App de suscripciones (Preapproval)
- *   → Valida con MP_SUBSCRIPTION_WEBHOOK_SECRET
- *   → Solo maneja eventos subscription_preapproval y subscription_authorized_payment
- *
- * Ambos endpoints:
- * - Sin autenticación JWT (MP no puede enviarlos)
- * - Verificados vía HMAC-SHA256 en el header x-signature
- * - Responden 200 inmediatamente, procesan de forma asíncrona
+ * POST /api/v1/webhooks/mp               (single payments app)
+ * POST /api/v1/webhooks/mp-subscriptions (subscriptions app)
  */
-const router = Router();
+export function createWebhookRouter({
+    configValues = config,
+    orderServiceClient = orderService,
+    subscriptionServiceClient = subscriptionService,
+    fetchImpl = fetch,
+    verifySignatureFn = verifyMpSignature,
+    logger = console,
+} = {}) {
+    const router = Router();
 
-/**
- * Verify the x-signature header from Mercado Pago.
- *
- * @param {import('express').Request} req
- * @returns {boolean}
- */
-/**
- * Verify the x-signature header from Mercado Pago.
- *
- * @param {import('express').Request} req
- * @param {string} secret  - The Webhook Secret for the specific MP app
- * @param {string} label   - Label used in log messages (e.g. 'payments' | 'subscriptions')
- * @returns {boolean}
- */
-function verifyMpSignature(req, secret, label = 'webhook') {
-    // If no secret configured — skip in dev, reject in production
-    if (!secret) {
-        if (config.nodeEnv === 'production') {
-            console.error(`❌ [Webhook/${label}] Secret not configured in production — rejecting request`);
-            return false;
+    async function handleSinglePayment(mpPaymentId) {
+        try {
+            const res = await fetchImpl(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
+                headers: { Authorization: `Bearer ${configValues.mercadoPagoAccessToken}` },
+            });
+
+            if (!res.ok) {
+                logger.error?.(`[Webhook/payment] Failed to fetch MP payment ${mpPaymentId}: HTTP ${res.status}`);
+                return;
+            }
+
+            const payment = await res.json();
+
+            logger.log?.(`[Webhook/payment] id=${mpPaymentId} status=${payment.status} external_ref=${payment.external_reference}`);
+
+            if (payment.status !== 'approved') {
+                logger.log?.(`[Webhook/payment] Payment ${mpPaymentId} is "${payment.status}" - ignoring`);
+                return;
+            }
+
+            const orderId = payment.external_reference;
+            if (!orderId) {
+                logger.warn?.(`[Webhook/payment] Payment ${mpPaymentId} has no external_reference - cannot link to order`);
+                return;
+            }
+
+            try {
+                await orderServiceClient.registerPaymentAttempt(orderId, {
+                    status: payment.status,
+                    paymentId: mpPaymentId,
+                });
+            } catch (err) {
+                logger.error?.(`[Webhook/payment] Could not persist payment state for order ${orderId}:`, err.message);
+            }
+
+            const result = await orderServiceClient.confirmPaidOrder(orderId, String(mpPaymentId));
+            if (!result.updated) {
+                logger.log?.(`[Webhook/payment] Order ${orderId} already in status "${result.previousStatus}" - skipping (duplicate webhook)`);
+                return;
+            }
+
+            logger.log?.(`[Webhook/payment] Order ${orderId} -> ${result.newStatus} (payment ${mpPaymentId})`);
+        } catch (err) {
+            logger.error?.(`[Webhook/payment] Error processing payment ${mpPaymentId}:`, err.message);
         }
-        console.warn(`⚠️  [Webhook/${label}] Secret not configured — skipping signature verification (dev only)`);
-        return true;
     }
 
-    const xSignatureHeader = req.headers['x-signature'];
-    const xRequestIdHeader = req.headers['x-request-id'];
-    const queryDataIdRaw = req.query['data.id'];
-    const xSignature = Array.isArray(xSignatureHeader) ? xSignatureHeader[0] : xSignatureHeader;
-    const xRequestId = Array.isArray(xRequestIdHeader) ? xRequestIdHeader[0] : xRequestIdHeader;
-    const queryDataId = Array.isArray(queryDataIdRaw) ? queryDataIdRaw[0] : queryDataIdRaw;
+    router.post('/mp', (req, res) => {
+        res.status(200).send('OK');
 
-    if (!xSignature) {
-        console.warn(`⚠️  [Webhook/${label}] Missing x-signature header`);
-        return false;
-    }
+        if (!verifySignatureFn(req, configValues.mpWebhookSecret, {
+            label: 'payments',
+            nodeEnv: configValues.nodeEnv,
+            logger,
+        })) {
+            logger.error?.('❌ [Webhook/payments] Signature verification failed — ignoring event');
+            return;
+        }
 
-    // Parse ts and v1 from x-signature header
-    // Format: "ts=1704908010,v1=618c85345248dd820d5fd456117c2ab2ef8eda45a0282ff693eac24131a5e839"
-    const parts = String(xSignature).split(',');
-    let ts = '';
-    let hash = '';
+        const { type, action } = req.body;
+        const dataId = req.query['data.id'] || req.body?.data?.id;
 
-    parts.forEach((part) => {
-        const [key, ...valueParts] = part.split('=');
-        const value = valueParts.join('=');
-        if (key?.trim() === 'ts') ts = value?.trim() || '';
-        if (key?.trim() === 'v1') hash = value?.trim() || '';
+        logger.log?.(`🔔 [Webhook/payments] type=${type}, action=${action}, dataId=${dataId}`);
+
+        if (!type || !dataId) {
+            logger.warn?.('⚠️  [Webhook/payments] Missing type or data.id — ignoring');
+            return;
+        }
+
+        if (type === 'payment') {
+            handleSinglePayment(String(dataId)).catch((err) => {
+                logger.error?.('❌ [Webhook/payments] Error in handleSinglePayment:', err.message);
+            });
+        } else {
+            logger.warn?.(`⚠️  [Webhook/payments] Unexpected event type "${type}" on payments endpoint — ignoring`);
+        }
     });
 
-    if (!ts || !hash) {
-        console.warn(`⚠️  [Webhook/${label}] Could not parse ts/v1 from x-signature`);
-        return false;
-    }
+    router.post('/mp-subscriptions', (req, res) => {
+        if (!verifySignatureFn(req, configValues.mpSubscriptionWebhookSecret, {
+            label: 'subscriptions',
+            nodeEnv: configValues.nodeEnv,
+            logger,
+        })) {
+            logger.error?.('❌ [Webhook/subscriptions] Signature verification failed — event discarded');
+            return res.status(200).send('OK');
+        }
 
-    // Build the manifest string per MP docs:
-    // id:[data.id_url];request-id:[x-request-id_header];ts:[ts_header];
-    // If a component is missing, it must be omitted from the manifest.
-    // data.id should be lowercase before signing.
-    const dataId = typeof queryDataId === 'string' ? queryDataId.trim().toLowerCase() : '';
-    const requestId = typeof xRequestId === 'string' ? xRequestId.trim() : '';
-    const manifestParts = [];
-    if (dataId) manifestParts.push(`id:${dataId}`);
-    if (requestId) manifestParts.push(`request-id:${requestId}`);
-    if (ts) manifestParts.push(`ts:${ts}`);
+        res.status(200).send('OK');
 
-    if (manifestParts.length === 0) {
-        console.warn(`⚠️  [Webhook/${label}] Could not build manifest (missing id/request-id/ts)`);
-        return false;
-    }
+        const { type, action } = req.body;
+        const dataId = req.query['data.id'] || req.body?.data?.id;
 
-    const manifest = `${manifestParts.join(';')};`;
+        if (!type || !dataId) {
+            logger.warn?.(`⚠️  [Webhook/subscriptions] Missing type or data.id — ignoring (type=${type}, dataId=${dataId})`);
+            return;
+        }
 
-    // Compute HMAC-SHA256 with timing-safe comparison
-    const computed = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
-    const computedBuf = Buffer.from(computed, 'hex');
-    const hashBuf = Buffer.from(hash, 'hex');
-    const valid = computedBuf.length === hashBuf.length && crypto.timingSafeEqual(computedBuf, hashBuf);
+        logger.log?.(`🔔 [Webhook/subscriptions] type=${type}, action=${action}, dataId=${dataId}`);
 
-    if (!valid) {
-        console.warn(`⚠️  [Webhook/${label}] HMAC verification failed`);
-        console.warn(`   Manifest: ${manifest}`);
-    }
+        const SUBSCRIPTION_TYPES = new Set([
+            'subscription_preapproval',
+            'subscription_authorized_payment',
+        ]);
 
-    return valid;
+        if (SUBSCRIPTION_TYPES.has(type)) {
+            subscriptionServiceClient.handleWebhookEvent(type, String(dataId)).catch((err) => {
+                logger.error?.(`❌ [Webhook/subscriptions] Error handling ${type} (dataId=${dataId}):`, err.message);
+            });
+        } else {
+            logger.warn?.(`⚠️  [Webhook/subscriptions] Unhandled event type "${type}" — ignoring`);
+        }
+    });
+
+    return router;
 }
 
-/**
- * Handle a one-time payment webhook from Mercado Pago.
- *
- * When a customer pays via Payment Brick (single purchase, not subscription),
- * MP sends a webhook with type="payment". We:
- * 1. Fetch the payment from MP to get its status and external_reference
- * 2. If status is "approved", find the order by external_reference (= orderId)
- * 3. Transition the order from PENDING → PROCESSING
- *
- * The orderService.updateOrderStatus call also creates an OrderHistory entry
- * so the customer can see the status change when tracking their order.
- *
- * @param {string} mpPaymentId  - The payment ID from data.id query param
- */
-async function handleSinglePayment(mpPaymentId) {
-    try {
-        // 1. Fetch payment details from Mercado Pago REST API
-        const res = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
-            headers: { Authorization: `Bearer ${config.mercadoPagoAccessToken}` },
-        });
-
-        if (!res.ok) {
-            console.error(`❌ [Webhook/payment] Failed to fetch MP payment ${mpPaymentId}: HTTP ${res.status}`);
-            return;
-        }
-
-        const payment = await res.json();
-
-        console.log(`🔔 [Webhook/payment] id=${mpPaymentId} status=${payment.status} external_ref=${payment.external_reference}`);
-
-        // 2. Only process approved payments — ignore pending/rejected
-        if (payment.status !== 'approved') {
-            console.log(`ℹ️  [Webhook/payment] Payment ${mpPaymentId} is "${payment.status}" — ignoring`);
-            return;
-        }
-
-        // 3. Resolve order — external_reference was set to String(order.id) in createPreference
-        const orderId = payment.external_reference;
-
-        if (!orderId) {
-            console.warn(`⚠️  [Webhook/payment] Payment ${mpPaymentId} has no external_reference — cannot link to order`);
-            return;
-        }
-
-        // 4. IDEMPOTENCY — fetch current order status before updating.
-        //    MP may retry the webhook on timeout or 5xx; the payment/process endpoint
-        //    may also have already updated the order. Avoid double-processing.
-        const order = await orderService.getOrderById(orderId);
-
-        if (!order) {
-            console.warn(`⚠️  [Webhook/payment] Order ${orderId} not found for payment ${mpPaymentId}`);
-            return;
-        }
-
-        if (order.status !== 'PENDING') {
-            console.log(`ℹ️  [Webhook/payment] Order ${orderId} already in status "${order.status}" — skipping (duplicate webhook)`);
-            return;
-        }
-
-        // 5. Transition order PENDING → PROCESSING
-        //    updateOrderStatus handles history entry creation internally.
-        await orderService.updateOrderStatus(
-            orderId,
-            'PROCESSING',
-            `Pago aprobado por Mercado Pago — payment_id: ${mpPaymentId}`,
-        );
-
-        console.log(`✅ [Webhook/payment] Order ${orderId} → PROCESSING (payment ${mpPaymentId})`);
-    } catch (err) {
-        console.error(`❌ [Webhook/payment] Error processing payment ${mpPaymentId}:`, err.message);
-    }
-}
-
-// ── /mp — App de pagos únicos (Checkout Bricks) ──────────────────────────────
-router.post('/mp', (req, res) => {
-    res.status(200).send('OK');
-
-    if (!verifyMpSignature(req, config.mpWebhookSecret, 'payments')) {
-        console.error('❌ [Webhook/payments] Signature verification failed — ignoring event');
-        return;
-    }
-
-    const { type, action } = req.body;
-    const dataId = req.query['data.id'] || req.body?.data?.id;
-
-    console.log(`🔔 [Webhook/payments] type=${type}, action=${action}, dataId=${dataId}`);
-
-    if (!type || !dataId) {
-        console.warn('⚠️  [Webhook/payments] Missing type or data.id — ignoring');
-        return;
-    }
-
-    if (type === 'payment') {
-        handleSinglePayment(String(dataId)).catch((err) => {
-            console.error('❌ [Webhook/payments] Error in handleSinglePayment:', err.message);
-        });
-    } else {
-        console.warn(`⚠️  [Webhook/payments] Unexpected event type "${type}" on payments endpoint — ignoring`);
-    }
-});
-
-// ── /mp-subscriptions — App de suscripciones (Preapproval) ───────────────────
-// notification_url is set in createPreapproval → config.publicUrl/api/v1/webhooks/mp-subscriptions
-// Validated with MP_SUBSCRIPTION_WEBHOOK_SECRET (separate from payments app secret).
-router.post('/mp-subscriptions', (req, res) => {
-    // Verify HMAC before anything else.
-    // NOTE: we still respond 200 — MP retries on non-200, which would flood logs.
-    // Signature failures are logged as errors for monitoring purposes.
-    if (!verifyMpSignature(req, config.mpSubscriptionWebhookSecret, 'subscriptions')) {
-        console.error('❌ [Webhook/subscriptions] Signature verification failed — event discarded');
-        // Respond 200 to prevent MP from retrying an invalid request indefinitely
-        return res.status(200).send('OK');
-    }
-
-    // Respond 200 immediately — MP requires a response within 5 s
-    res.status(200).send('OK');
-
-    const { type, action } = req.body;
-    const dataId = req.query['data.id'] || req.body?.data?.id;
-
-    // Guard: both type and dataId are required to process any event
-    if (!type || !dataId) {
-        console.warn(`⚠️  [Webhook/subscriptions] Missing type or data.id — ignoring (type=${type}, dataId=${dataId})`);
-        return;
-    }
-
-    console.log(`🔔 [Webhook/subscriptions] type=${type}, action=${action}, dataId=${dataId}`);
-
-    const SUBSCRIPTION_TYPES = new Set([
-        'subscription_preapproval',        // lifecycle: authorized, cancelled, paused
-        'subscription_authorized_payment', // recurring charge processed
-    ]);
-
-    if (SUBSCRIPTION_TYPES.has(type)) {
-        subscriptionService.handleWebhookEvent(type, String(dataId)).catch((err) => {
-            console.error(`❌ [Webhook/subscriptions] Error handling ${type} (dataId=${dataId}):`, err.message);
-        });
-    } else {
-        // Log unexpected types so they're visible in Railway without breaking anything
-        console.warn(`⚠️  [Webhook/subscriptions] Unhandled event type "${type}" — ignoring`);
-    }
-});
+const router = createWebhookRouter();
 
 export default router;

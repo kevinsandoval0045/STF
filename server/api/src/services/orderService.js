@@ -134,17 +134,6 @@ export class OrderService {
             })),
         };
 
-        // Send order confirmation email (fire-and-forget)
-        this.emailService.sendOrderConfirmation({
-            email: customerInfo.email,
-            firstName: customerInfo.firstName,
-            orderNumber: result.orderNumber,
-            trackingToken: result.trackingToken,
-            totalAmount: result.totalAmount,
-            shippingCost: result.shippingCost,
-            items: result.items,
-        });
-
         return result;
     }
 
@@ -162,6 +151,7 @@ export class OrderService {
         }
 
         return {
+            id: order.id,
             orderNumber: order.orderNumber,
             status: order.status,
             totalAmount: Number(order.totalAmount),
@@ -305,7 +295,8 @@ export class OrderService {
     }
 
     /**
-     * Update an order's status. Sends an email notification when status = SHIPPED.
+     * Update an order's status.
+     * Sends customer notifications for shipment and delivery states.
      * Called from the admin panel.
      */
     async updateOrderStatus(orderId, newStatus, note, { shippingTrackNo, shippingCarrier } = {}) {
@@ -332,7 +323,124 @@ export class OrderService {
             });
         }
 
+        // Notify customer when the package is marked as delivered
+        if (newStatus === 'DELIVERED') {
+            this.emailService.sendOrderDelivered({
+                email: order.email,
+                firstName: order.firstName,
+                orderNumber: order.orderNumber,
+                trackingToken: order.trackingToken,
+            });
+        }
+
         return updated;
+    }
+
+    /**
+     * Confirm an order after Mercado Pago approves the payment.
+     *
+     * Idempotent behavior:
+     * - Only transitions PENDING -> PROCESSING
+     * - Sends confirmation email exactly once
+     *
+     * @param {string} orderId
+     * @param {string|number|undefined} mpPaymentId
+     */
+    async confirmPaidOrder(orderId, mpPaymentId) {
+        const order = await this.orderRepository.findById(orderId);
+
+        if (!order) {
+            const error = new Error('Pedido no encontrado');
+            error.statusCode = 404;
+            error.code = 'NOT_FOUND';
+            throw error;
+        }
+
+        // Persist explicit approved payment state even if webhook arrives late/duplicated.
+        // This enables accurate filtering in profile/admin.
+        await this.orderRepository.updatePaymentState(order.id, {
+            paymentStatus: 'approved',
+            paymentId: mpPaymentId ? String(mpPaymentId) : undefined,
+        });
+
+        if (order.status !== 'PENDING') {
+            return {
+                updated: false,
+                orderNumber: order.orderNumber,
+                previousStatus: order.status,
+            };
+        }
+
+        const transitioned = await this.orderRepository.updateStatusIfCurrent(
+            order.id,
+            order.status,
+            'PROCESSING',
+            `Pago aprobado por Mercado Pago${mpPaymentId ? ` - payment_id: ${mpPaymentId}` : ''}`
+        );
+
+        if (!transitioned) {
+            const latest = await this.orderRepository.findById(order.id);
+            return {
+                updated: false,
+                orderNumber: order.orderNumber,
+                previousStatus: latest?.status || order.status,
+            };
+        }
+
+        // Fire-and-forget: never block order state transition if email service is down.
+        this.emailService.sendOrderConfirmation({
+            email: order.email,
+            firstName: order.firstName,
+            orderNumber: order.orderNumber,
+            trackingToken: order.trackingToken,
+            totalAmount: Number(order.totalAmount),
+            shippingCost: Number(order.shippingCost),
+            items: order.items.map((item) => ({
+                productName: item.productNameSnap,
+                quantity: item.quantity,
+                unitPrice: Number(item.unitPrice),
+                totalPrice: Number(item.totalPrice),
+            })),
+        });
+
+        return {
+            updated: true,
+            orderNumber: order.orderNumber,
+            previousStatus: order.status,
+            newStatus: 'PROCESSING',
+        };
+    }
+
+    /**
+     * Persist payment attempt outcome for a PENDING order.
+     * This lets the UI differentiate approved/rejected/pending attempts.
+     *
+     * @param {string} orderId
+     * @param {Object} data
+     * @param {string} data.status
+     * @param {string|number|undefined} data.paymentId
+     */
+    async registerPaymentAttempt(orderId, { status, paymentId } = {}) {
+        const order = await this.orderRepository.findById(orderId);
+
+        if (!order) {
+            const error = new Error('Pedido no encontrado');
+            error.statusCode = 404;
+            error.code = 'NOT_FOUND';
+            throw error;
+        }
+
+        // Never mutate payment metadata for orders that already moved forward.
+        if (order.status !== 'PENDING' && String(status || '').toLowerCase() !== 'approved') {
+            return order;
+        }
+
+        const normalizedStatus = String(status || '').trim().toLowerCase() || 'unknown';
+
+        return this.orderRepository.updatePaymentState(order.id, {
+            paymentStatus: normalizedStatus,
+            paymentId: paymentId ? String(paymentId) : undefined,
+        });
     }
 
     /**

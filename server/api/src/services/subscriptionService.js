@@ -208,6 +208,39 @@ export class SubscriptionService {
         return this.subscriptionRepository.findByUserId(userId);
     }
 
+    /**
+     * Send reminder emails for subscriptions with upcoming recurring charge.
+     *
+     * @param {number} leadHours - how far ahead to remind (default from env)
+     * @returns {{ totalDue: number, reminderSent: number }}
+     */
+    async sendUpcomingChargeReminders(leadHours = config.subscriptionReminderLeadHours) {
+        const hours = Number(leadHours) > 0 ? Number(leadHours) : 48;
+        const cutoffDate = new Date(Date.now() + hours * 60 * 60 * 1000);
+        const dueSubscriptions = await this.subscriptionRepository.findDueForReminder(cutoffDate);
+
+        let reminderSent = 0;
+        for (const subscription of dueSubscriptions) {
+            if (!subscription.nextBillingDate) continue;
+
+            await this.emailService.sendSubscriptionUpcomingChargeReminder({
+                email: subscription.email,
+                firstName: subscription.firstName,
+                productName: subscription.product?.name || 'tu producto',
+                amount: Number(subscription.amount),
+                nextBillingDate: subscription.nextBillingDate,
+                billingDays: subscription.billingDays,
+                subscriptionId: subscription.id,
+            });
+            reminderSent += 1;
+        }
+
+        return {
+            totalDue: dueSubscriptions.length,
+            reminderSent,
+        };
+    }
+
     // ─── Private helpers ─────────────────────────────────────────────────
 
     /**
@@ -274,6 +307,16 @@ export class SubscriptionService {
                 subscriptionId: subscription.id,
             });
         }
+
+        // Notify customer when MP pauses the subscription (usually payment method issue)
+        if (newStatus === 'PAUSED' && subscription.status !== 'PAUSED') {
+            this.emailService.sendSubscriptionPaused({
+                email: subscription.email,
+                firstName: subscription.firstName,
+                productName: subscription.product?.name || preapproval.reason || 'tu producto',
+                subscriptionId: subscription.id,
+            });
+        }
     }
 
     /**
@@ -325,6 +368,42 @@ export class SubscriptionService {
             );
 
             if (!chargeApproved) {
+                const failureStatuses = new Set(['rejected', 'failed', 'cancelled']);
+                const failed = (
+                    failureStatuses.has(nestedPaymentStatus)
+                    || failureStatuses.has(summarizedStatus)
+                    || failureStatuses.has(invoiceStatus)
+                );
+
+                if (failed) {
+                    // Resolve subscription for failure notification
+                    const preapprovalId = authorizedPayment.preapproval_id ? String(authorizedPayment.preapproval_id) : '';
+                    let failedSubscription = null;
+
+                    if (preapprovalId) {
+                        failedSubscription = await this.subscriptionRepository.findByMpPreapprovalId(preapprovalId);
+                    }
+
+                    if (!failedSubscription && authorizedPayment.external_reference) {
+                        failedSubscription = await this.subscriptionRepository.findById(String(authorizedPayment.external_reference));
+                    }
+
+                    if (failedSubscription) {
+                        const estimatedAmount = Number(authorizedPayment.transaction_amount ?? failedSubscription.amount);
+                        const failedStatus = nestedPaymentStatus || summarizedStatus || invoiceStatus || 'rejected';
+                        this.emailService.sendSubscriptionChargeFailed({
+                            email: failedSubscription.email,
+                            firstName: failedSubscription.firstName,
+                            productName: failedSubscription.product?.name || 'tu producto',
+                            amount: estimatedAmount,
+                            nextBillingDate: failedSubscription.nextBillingDate,
+                            paymentStatus: failedStatus,
+                            subscriptionId: failedSubscription.id,
+                            eventId: authorizedPaymentId,
+                        });
+                    }
+                }
+
                 console.log(`ℹ️  [Webhook] Authorized payment ${authorizedPaymentId} not approved yet (payment=${nestedPaymentStatus || 'n/a'}, summarized=${summarizedStatus || 'n/a'}, status=${invoiceStatus || 'n/a'})`);
                 return;
             }

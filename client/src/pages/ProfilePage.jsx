@@ -65,6 +65,8 @@ const STATUS_LABELS = {
     PENDING: 'Pendiente', PROCESSING: 'En proceso',
     SHIPPED: 'Enviado', DELIVERED: 'Entregado',
     COMPLETED: 'Completado', CANCELLED: 'Cancelado',
+    RETURN_REQUESTED: 'Devolución solicitada',
+    RETURNED: 'Devuelto',
 };
 const STATUS_COLORS = {
     PENDING: 'bg-yellow-50 text-yellow-700',
@@ -73,7 +75,38 @@ const STATUS_COLORS = {
     DELIVERED: 'bg-green-50 text-green-700',
     COMPLETED: 'bg-green-50 text-green-700',
     CANCELLED: 'bg-red-50 text-red-700',
+    RETURN_REQUESTED: 'bg-orange-50 text-orange-700',
+    RETURNED: 'bg-neutral-100 text-neutral-700',
 };
+
+const PAYMENT_STATUS_LABELS = {
+    approved: 'Aprobado',
+    rejected: 'Rechazado',
+    failed: 'Fallido',
+    cancelled: 'Cancelado',
+    pending: 'Pendiente',
+    in_process: 'En proceso',
+};
+
+const PAYMENT_STATUS_COLORS = {
+    approved: 'bg-green-50 text-green-700',
+    rejected: 'bg-red-50 text-red-700',
+    failed: 'bg-red-50 text-red-700',
+    cancelled: 'bg-red-50 text-red-700',
+    pending: 'bg-yellow-50 text-yellow-700',
+    in_process: 'bg-blue-50 text-blue-700',
+};
+
+const CONFIRMED_ORDER_STATUSES = new Set([
+    'PROCESSING',
+    'SHIPPED',
+    'DELIVERED',
+    'COMPLETED',
+    'RETURN_REQUESTED',
+    'RETURNED',
+]);
+
+const REJECTED_PAYMENT_STATUSES = new Set(['rejected', 'failed', 'cancelled']);
 
 const SUB_STATUS_LABELS = {
     PENDING: 'Pendiente', AUTHORIZED: 'Activa',
@@ -236,12 +269,19 @@ export default function ProfilePage() {
         navigate('/');
     };
 
+    const normalizePaymentStatus = (value) => String(value || '').trim().toLowerCase();
+    const isRejectedPaymentOrder = (order) => REJECTED_PAYMENT_STATUSES.has(normalizePaymentStatus(order.paymentStatus));
+    const isConfirmedOrder = (order) => {
+        const paymentStatus = normalizePaymentStatus(order.paymentStatus);
+        return paymentStatus === 'approved' || CONFIRMED_ORDER_STATUSES.has(order.status);
+    };
+
     const hasAddress = user?.address && user.address.trim() !== '';
     const activeSubs      = subs.filter((s) => s.status === 'AUTHORIZED' || s.status === 'PENDING');
-    // PENDING orders = payment not yet confirmed by MP (checkout started but not paid)
-    // We show them separately so they don't pollute the purchase history
-    const pendingOrders   = orders.filter((o) => o.status === 'PENDING');
-    const confirmedOrders = orders.filter((o) => o.status !== 'PENDING');
+    const rejectedOrders  = orders.filter((o) => isRejectedPaymentOrder(o));
+    const rejectedDisplayOrders = rejectedOrders;
+    const confirmedOrders = orders.filter((o) => !isRejectedPaymentOrder(o) && isConfirmedOrder(o));
+    const visibleOrdersCount = confirmedOrders.length + rejectedOrders.length;
 
     if (!isAuthenticated || !user) return null;
 
@@ -318,25 +358,30 @@ export default function ProfilePage() {
                     </Accordion>
 
                     {/* ── 2. Historial de compras ────────────── */}
-                    <Accordion id="orders" title="Historial de compras" icon={ShoppingBag} count={confirmedOrders.length}>
+                    <Accordion id="orders" title="Historial de compras" icon={ShoppingBag} count={visibleOrdersCount}>
                         {ordersLoading ? (
                             <div className="flex justify-center py-4">
                                 <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
                             </div>
                         ) : (
                             <>
-                                {/* ── Pedidos con pago pendiente ─────────── */}
-                                {pendingOrders.length > 0 && (
+                                {/* ── Pedidos con pago rechazado ─────────── */}
+                                {rejectedDisplayOrders.length > 0 && (
                                     <div className="space-y-2 mb-4">
-                                        <p className="text-xs font-semibold text-yellow-700 uppercase tracking-wide">
-                                            Pago pendiente
+                                        <p className="text-xs font-semibold text-red-700 uppercase tracking-wide">
+                                            Pago rechazado
                                         </p>
-                                        {pendingOrders.map((order) => (
+                                        {rejectedDisplayOrders.map((order) => {
+                                            const paymentStatus = normalizePaymentStatus(order.paymentStatus);
+                                            const paymentLabel = PAYMENT_STATUS_LABELS[paymentStatus] ?? (order.paymentStatus || 'Rechazado');
+                                            const paymentColor = PAYMENT_STATUS_COLORS[paymentStatus] ?? 'bg-red-50 text-red-700';
+
+                                            return (
                                             <div key={order.id}
-                                                className="p-4 rounded-xl border border-yellow-200 bg-yellow-50 space-y-2">
+                                                className="p-4 rounded-xl border border-red-200 bg-red-50 space-y-2">
                                                 <div className="flex items-center justify-between flex-wrap gap-2">
                                                     <div>
-                                                        <p className="text-xs text-yellow-600">Pedido (sin confirmar)</p>
+                                                        <p className="text-xs text-red-600">Pedido con pago no aprobado</p>
                                                         <p className="font-bold text-kas-text text-sm">{order.orderNumber}</p>
                                                     </div>
                                                     <div className="text-right">
@@ -344,8 +389,13 @@ export default function ProfilePage() {
                                                         <p className="font-semibold text-brand-red text-sm">{formatPrice(order.totalAmount)}</p>
                                                     </div>
                                                 </div>
-                                                <p className="text-xs text-yellow-700">
-                                                    El pago no fue completado. Puedes cancelar este pedido o ir al checkout para intentarlo de nuevo.
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className={`inline-block text-xs font-medium px-2 py-1 rounded-full ${paymentColor}`}>
+                                                        {paymentLabel}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-red-700">
+                                                    El pago fue rechazado. Puedes cancelar este pedido e intentarlo de nuevo.
                                                 </p>
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <button
@@ -361,13 +411,14 @@ export default function ProfilePage() {
                                                     </button>
                                                 </div>
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
 
                                 {/* ── Pedidos confirmados ─────────────── */}
-                                {confirmedOrders.length === 0 ? (
-                                    <EmptyState message="Todavía no tienes compras registradas. ¡Tu próximo pedido aparecerá aquí!" />
+                                {confirmedOrders.length === 0 && rejectedDisplayOrders.length === 0 ? (
+                                    <EmptyState message="No tienes pedidos aprobados para mostrar." />
                                 ) : (
                                     confirmedOrders.map((order) => (
                                         <div key={order.id}

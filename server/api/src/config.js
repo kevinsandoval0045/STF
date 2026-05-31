@@ -6,6 +6,12 @@ const readEnv = (name) => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
+const readIntEnv = (name, fallback) => {
+  const raw = readEnv(name);
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 /**
  * Centralized configuration.
  * All environment variables are read here and exported as a single object.
@@ -58,6 +64,11 @@ export const config = {
   resendFrom: readEnv('RESEND_FROM') || 'KAS Supplements <onboarding@resend.dev>',
   // In dev (no verified domain) all emails go to this address
   resendDevTo: readEnv('RESEND_DEV_TO'),
+  emailLogoUrl: readEnv('EMAIL_LOGO_URL'),
+
+  // Internal jobs (cron/manual)
+  internalCronSecret: readEnv('INTERNAL_CRON_SECRET'),
+  subscriptionReminderLeadHours: readIntEnv('SUBSCRIPTION_REMINDER_LEAD_HOURS', 48),
 };
 
 /**

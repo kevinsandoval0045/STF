@@ -51,6 +51,8 @@ export default function CheckoutPage() {
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [paymentError, setPaymentError] = useState(null);
+    const [paymentBrickKey, setPaymentBrickKey] = useState(0);
 
     // Auth guard
     useEffect(() => {
@@ -121,6 +123,7 @@ export default function CheckoutPage() {
                 totalAmount: result.totalAmount,
             });
             setStep(2);
+            setPaymentError(null);
             clearCart();
         } catch (err) {
             const msg =
@@ -146,10 +149,13 @@ export default function CheckoutPage() {
      *    onSubmit is NOT called for these — so the code below only runs for cards.
      */
     const onPaymentSubmit = useCallback(async ({ selectedPaymentMethod, formData }) => {
+        setPaymentError(null);
+
         // Guard: if there's no orderId we can't process (shouldn't happen in practice)
         if (!orderSummary?.orderId) {
             console.error('[Checkout] onPaymentSubmit called but orderId is missing');
-            throw new Error('Error interno: no se encontró el pedido. Por favor, recarga la página.');
+            navigate('/payment-failure?reason=No%20se%20encontro%20el%20pedido.%20Recarga%20la%20pagina.');
+            return;
         }
 
         try {
@@ -166,48 +172,56 @@ export default function CheckoutPage() {
                 navigate(
                     `/payment-success?orderNumber=${encodeURIComponent(orderSummary.orderNumber)}&trackingToken=${encodeURIComponent(orderSummary.trackingToken)}`
                 );
-            } else if (status === 'pending' || status === 'in_process') {
+                return;
+            }
+
+            if (status === 'pending' || status === 'in_process') {
                 // Common for some bank transfers / 3DS flows that settle asynchronously
                 navigate(
                     `/payment-success?orderNumber=${encodeURIComponent(orderSummary.orderNumber)}&trackingToken=${encodeURIComponent(orderSummary.trackingToken)}&pending=true`
                 );
-            } else {
-                // Payment was rejected by MP. Throwing an Error here is required:
-                // the Payment Brick listens for a rejected promise and automatically
-                // re-enables its form so the user can correct their data and retry.
-                const REJECTION_MESSAGES = {
-                    cc_rejected_bad_filled_card_number: 'Número de tarjeta incorrecto. Verifica los datos.',
-                    cc_rejected_bad_filled_date: 'Fecha de vencimiento incorrecta.',
-                    cc_rejected_bad_filled_other: 'Datos de tarjeta incorrectos. Intenta de nuevo.',
-                    cc_rejected_bad_filled_security_code: 'Código de seguridad (CVV) incorrecto.',
-                    cc_rejected_blacklist: 'Esta tarjeta no puede procesar el pago.',
-                    cc_rejected_call_for_authorize: 'Comunícate con tu banco para autorizar el pago.',
-                    cc_rejected_card_disabled: 'La tarjeta está deshabilitada. Usa otra tarjeta.',
-                    cc_rejected_insufficient_amount: 'Fondos insuficientes en la tarjeta.',
-                    cc_rejected_invalid_installments: 'El número de cuotas seleccionado no está disponible.',
-                    cc_rejected_max_attempts: 'Límite de intentos alcanzado. Intenta más tarde.',
-                };
-                const message = REJECTION_MESSAGES[statusDetail]
-                    ?? 'El pago fue rechazado. Verifica tus datos o intenta con otra tarjeta.';
-                throw new Error(message);
+                return;
             }
+
+            // Rejected (or any non-success) status from MP.
+            const REJECTION_MESSAGES = {
+                cc_rejected_bad_filled_card_number: 'Numero de tarjeta incorrecto. Verifica los datos.',
+                cc_rejected_bad_filled_date: 'Fecha de vencimiento incorrecta.',
+                cc_rejected_bad_filled_other: 'Datos de tarjeta incorrectos. Intenta de nuevo.',
+                cc_rejected_bad_filled_security_code: 'Codigo de seguridad (CVV) incorrecto.',
+                cc_rejected_blacklist: 'Esta tarjeta no puede procesar el pago.',
+                cc_rejected_call_for_authorize: 'Comunicate con tu banco para autorizar el pago.',
+                cc_rejected_card_disabled: 'La tarjeta esta deshabilitada. Usa otra tarjeta.',
+                cc_rejected_insufficient_amount: 'Fondos insuficientes en la tarjeta.',
+                cc_rejected_invalid_installments: 'El numero de cuotas seleccionado no esta disponible.',
+                cc_rejected_max_attempts: 'Limite de intentos alcanzado. Intenta mas tarde.',
+            };
+
+            const rejectionMessage = REJECTION_MESSAGES[statusDetail]
+                || 'El pago fue rechazado. Verifica tus datos o intenta con otra tarjeta.';
+
+            setPaymentError(rejectionMessage);
+            setPaymentBrickKey((prev) => prev + 1);
         } catch (err) {
-            // Normalize ANY error (Axios HTTP errors, network errors, etc.) to a plain Error
-            // so the MP Payment Brick can handle it cleanly without "Failed to convert value to Response".
-            // Re-throw errors that are already standard Error instances (e.g. the rejection throw above).
+            const apiError = err?.response?.data?.error;
+            const apiErrorMessage = typeof apiError === 'string' ? apiError : apiError?.message;
             const message =
                 err?.response?.data?.message ||
-                err?.response?.data?.error ||
+                apiErrorMessage ||
                 err?.message ||
                 'Error al procesar el pago. Por favor, intenta de nuevo.';
-            throw new Error(message);
+
+            setPaymentError(message);
+            setPaymentBrickKey((prev) => prev + 1);
         }
     }, [orderSummary, navigate]);
 
     const onPaymentError = useCallback((error) => {
         console.error('MP Payment error:', error);
-        navigate('/payment-failure');
-    }, [navigate]);
+        const message = error?.message || 'No se pudo procesar tu pago. Intenta nuevamente.';
+        setPaymentError(message);
+        setPaymentBrickKey((prev) => prev + 1);
+    }, []);
 
     if (!isAuthenticated) return null;
 
@@ -379,7 +393,13 @@ export default function CheckoutPage() {
                             </div>
 
                             <div className="p-4">
+                                {paymentError && (
+                                    <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                        {paymentError}
+                                    </div>
+                                )}
                                 <Payment
+                                    key={paymentBrickKey}
                                     initialization={{
                                         amount: orderSummary?.totalAmount || subtotal,
                                         preferenceId,

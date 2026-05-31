@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import Connect from 'connect-pg-simple';
 import session from 'express-session';
 import { config } from './config.js';
+import { emailService } from './container.js';
 
 // ─── 1. Register Prisma Adapter ───────────────────────────────────────────────
 AdminJS.registerAdapter({ Database, Resource });
@@ -248,6 +249,61 @@ const admin = new AdminJS({
           updatedAt: { isVisible: { list: false, show: true, edit: false, filter: false } },
         },
         listProperties: ['orderNumber', 'status', 'email', 'firstName', 'lastName', 'totalAmount', 'createdAt'],
+        actions: {
+          list: {
+            before: async (request) => {
+              const { query = {} } = request;
+              request.query = {
+                ...query,
+                ['filters.paymentStatus']: 'approved',
+              };
+              return request;
+            },
+          },
+          edit: {
+            before: async (request, context) => {
+              if (request.method === 'post') {
+                context.previousOrderStatus = context.record?.params?.status || null;
+              }
+              return request;
+            },
+            after: async (response, request, context) => {
+              if (request.method !== 'post') return response;
+
+              const oldStatus = context.previousOrderStatus;
+              const newStatus = response?.record?.params?.status;
+              const orderId = response?.record?.params?.id || context.record?.params?.id;
+
+              if (!orderId || !oldStatus || oldStatus === newStatus) return response;
+              if (!['SHIPPED', 'DELIVERED'].includes(newStatus)) return response;
+
+              const order = await prisma.order.findUnique({ where: { id: String(orderId) } });
+              if (!order) return response;
+
+              if (newStatus === 'SHIPPED') {
+                emailService.sendOrderShipped({
+                  email: order.email,
+                  firstName: order.firstName,
+                  orderNumber: order.orderNumber,
+                  trackingToken: order.trackingToken,
+                  shippingTrackNo: order.shippingTrackNo,
+                  shippingCarrier: order.shippingCarrier,
+                });
+              }
+
+              if (newStatus === 'DELIVERED') {
+                emailService.sendOrderDelivered({
+                  email: order.email,
+                  firstName: order.firstName,
+                  orderNumber: order.orderNumber,
+                  trackingToken: order.trackingToken,
+                });
+              }
+
+              return response;
+            },
+          },
+        },
       },
     },
 
@@ -310,6 +366,47 @@ const admin = new AdminJS({
           updatedAt: { isVisible: { list: false, show: true, edit: false, filter: false } },
         },
         listProperties: ['orderId', 'type', 'status', 'returnCode', 'carrier', 'createdAt'],
+        actions: {
+          edit: {
+            before: async (request, context) => {
+              if (request.method === 'post') {
+                context.previousReturnStatus = context.record?.params?.status || null;
+              }
+              return request;
+            },
+            after: async (response, request, context) => {
+              if (request.method !== 'post') return response;
+
+              const oldStatus = context.previousReturnStatus;
+              const newStatus = response?.record?.params?.status;
+              const returnRequestId = response?.record?.params?.id || context.record?.params?.id;
+
+              if (!returnRequestId || !oldStatus || oldStatus === newStatus) return response;
+
+              const notifyStatuses = new Set(['APPROVED', 'REJECTED', 'REFUND_RECEIVED', 'COMPLETED']);
+              if (!notifyStatuses.has(newStatus)) return response;
+
+              const returnRequest = await prisma.returnRequest.findUnique({
+                where: { id: String(returnRequestId) },
+                include: { order: true },
+              });
+
+              if (!returnRequest?.order) return response;
+
+              emailService.sendReturnStatusUpdated({
+                email: returnRequest.order.email,
+                firstName: returnRequest.order.firstName,
+                orderNumber: returnRequest.order.orderNumber,
+                status: newStatus,
+                adminNote: returnRequest.adminNote,
+                returnCode: returnRequest.returnCode,
+                carrier: returnRequest.carrier,
+              });
+
+              return response;
+            },
+          },
+        },
       },
     },
 
@@ -411,12 +508,13 @@ const adminRouter = AdminJSExpress.buildAuthenticatedRouter(
   null,
   {
     store: sessionStore,
-    resave: true,
-    saveUninitialized: true,
+    resave: false,
+    saveUninitialized: false,
     secret: config.sessionSecret,
     cookie: {
-      httpOnly: config.nodeEnv === 'production',
+      httpOnly: true,
       secure: config.nodeEnv === 'production',
+      sameSite: 'lax',
     },
     name: 'adminjs',
   }

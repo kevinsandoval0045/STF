@@ -190,4 +190,15 @@ export const getSettings = async () => {
     return data;
 };
 
+// ─── Returns ────────────────────────────────────────────────────────────────
+
+/**
+ * Create a return request for an order.
+ * For guest orders, include trackingToken.
+ */
+export const createReturnRequest = async (payload) => {
+    const { data } = await api.post('/returns', payload);
+    return data;
+};
+
 export default api;

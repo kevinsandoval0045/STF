@@ -13,17 +13,42 @@ export class OrderRepository {
      */
     async create(orderData, items) {
         return this.prisma.$transaction(async (tx) => {
-            // 1. Decrement stock and increment salesCount for each item atomically.
-            //    This prevents overselling: if stockQuantity would go negative,
-            //    Prisma's check constraint raises an error and rolls back the entire transaction.
+            // 1. Decrement stock and increment salesCount atomically with a conditional update.
+            //    The condition stockQuantity >= item.quantity prevents overselling under concurrency.
             for (const item of items) {
-                await tx.product.update({
-                    where: { id: item.productId },
+                const updated = await tx.product.updateMany({
+                    where: {
+                        id: item.productId,
+                        active: true,
+                        stockQuantity: { gte: item.quantity },
+                    },
                     data: {
                         stockQuantity: { decrement: item.quantity },
                         salesCount:    { increment: item.quantity },
                     },
                 });
+
+                if (updated.count === 0) {
+                    const product = await tx.product.findUnique({
+                        where: { id: item.productId },
+                        select: { name: true, active: true, stockQuantity: true },
+                    });
+
+                    let error;
+                    if (!product) {
+                        error = new Error(`Product not found: ${item.productId}`);
+                        error.code = 'INVALID_PRODUCT';
+                    } else if (!product.active) {
+                        error = new Error(`Product is not available: ${product.name}`);
+                        error.code = 'PRODUCT_UNAVAILABLE';
+                    } else {
+                        error = new Error(`Insufficient stock for: ${product.name}`);
+                        error.code = 'INSUFFICIENT_STOCK';
+                    }
+
+                    error.statusCode = 400;
+                    throw error;
+                }
             }
 
             // 2. Create the order with its items and initial history entry
@@ -96,6 +121,68 @@ export class OrderRepository {
             });
 
             return order;
+        });
+    }
+
+    /**
+     * Atomically transition status only if the current status matches expectedStatus.
+     * Returns true if the status changed, false when already changed by another process.
+     */
+    async updateStatusIfCurrent(id, expectedStatus, newStatus, note = null) {
+        return this.prisma.$transaction(async (tx) => {
+            const result = await tx.order.updateMany({
+                where: { id, status: expectedStatus },
+                data: { status: newStatus },
+            });
+
+            if (result.count === 0) {
+                return false;
+            }
+
+            await tx.orderHistory.create({
+                data: {
+                    orderId: id,
+                    oldStatus: expectedStatus,
+                    newStatus,
+                    note,
+                },
+            });
+
+            return true;
+        });
+    }
+
+    /**
+     * Update payment metadata for an order.
+     * Used to persist payment attempt outcomes from Mercado Pago.
+     *
+     * @param {string} id
+     * @param {Object} payload
+     * @param {string|undefined} payload.paymentStatus
+     * @param {string|number|undefined} payload.paymentId
+     */
+    async updatePaymentState(id, { paymentStatus = undefined, paymentId = undefined } = {}) {
+        const data = {};
+
+        if (paymentStatus !== undefined) {
+            data.paymentStatus = paymentStatus;
+        }
+
+        if (paymentId !== undefined && paymentId !== null && paymentId !== '') {
+            data.paymentId = String(paymentId);
+        }
+
+        if (Object.keys(data).length === 0) {
+            return this.findById(id);
+        }
+
+        return this.prisma.order.update({
+            where: { id },
+            data,
+            include: {
+                items: true,
+                history: { orderBy: { createdAt: 'asc' } },
+            },
         });
     }
 

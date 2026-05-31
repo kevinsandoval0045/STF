@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { config } from '../config.js';
 
 /**
  * Subscription Controller — HTTP Layer.
@@ -59,5 +60,25 @@ export class SubscriptionController {
         const { id } = req.params;
         const result = await this.subscriptionService.cancel(id, req.user.userId);
         res.json(result);
+    };
+
+    /**
+     * POST /subscriptions/internal/reminders/send
+     * Internal endpoint for cron jobs. Protected by x-internal-secret header.
+     */
+    sendBillingReminders = async (req, res) => {
+        const providedSecret = String(req.headers['x-internal-secret'] || '');
+        const expectedSecret = String(config.internalCronSecret || '');
+
+        if (!expectedSecret || providedSecret !== expectedSecret) {
+            return res.status(403).json({ error: { message: 'Forbidden' } });
+        }
+
+        const leadHours = req.query?.leadHours ? Number(req.query.leadHours) : undefined;
+        const result = await this.subscriptionService.sendUpcomingChargeReminders(leadHours);
+        return res.json({
+            message: 'Reminder job executed',
+            ...result,
+        });
     };
 }

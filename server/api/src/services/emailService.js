@@ -2,44 +2,38 @@ import { Resend } from 'resend';
 import { config } from '../config.js';
 import { orderConfirmationTemplate } from '../templates/orderConfirmation.js';
 import { orderShippedTemplate } from '../templates/orderShipped.js';
+import { orderDeliveredTemplate } from '../templates/orderDelivered.js';
 import { orderCancelledTemplate } from '../templates/orderCancelled.js';
 import { welcomeTemplate } from '../templates/welcome.js';
 import { subscriptionActivatedTemplate } from '../templates/subscriptionActivated.js';
+import { subscriptionPausedTemplate } from '../templates/subscriptionPaused.js';
 import { subscriptionCancelledTemplate } from '../templates/subscriptionCancelled.js';
 import { subscriptionChargedTemplate } from '../templates/subscriptionCharged.js';
+import { subscriptionBillingReminderTemplate } from '../templates/subscriptionBillingReminder.js';
+import { subscriptionChargeFailedTemplate } from '../templates/subscriptionChargeFailed.js';
 import { returnRequestReceivedTemplate } from '../templates/returnRequestReceived.js';
+import { returnStatusUpdatedTemplate } from '../templates/returnStatusUpdated.js';
 
 /**
- * Email Service — wraps Resend SDK.
+ * Email Service - wraps Resend SDK.
  *
  * DEVELOPMENT NOTE:
  * Without a verified domain, Resend only allows sending to the account owner's email.
  * In that case, RESEND_DEV_TO overrides the real recipient so emails are testable.
  * Once a domain is verified, remove RESEND_DEV_TO from .env and all emails will
  * be sent to the real customer address.
- *
- * Idempotency keys follow the pattern: <event-type>/<entity-id>
- * to prevent duplicate sends on retries.
  */
 export class EmailService {
     constructor() {
         this.resend = new Resend(config.resendApiKey);
         this.from = config.resendFrom;
-        // If set, ALL emails go here (sandbox / no-verified-domain mode)
         this.devTo = config.resendDevTo || null;
     }
 
-    /**
-     * Resolve recipient: in dev/sandbox mode, always send to devTo.
-     */
     #resolveRecipient(realEmail) {
         return this.devTo ? this.devTo : realEmail;
     }
 
-    /**
-     * Low-level send with error handling.
-     * Never throws — logs error so the main flow is never interrupted.
-     */
     async #send({ to, subject, html, idempotencyKey }) {
         try {
             const { data, error } = await this.resend.emails.send(
@@ -53,134 +47,139 @@ export class EmailService {
             );
 
             if (error) {
-                console.error(`❌ [EmailService] Failed to send "${subject}":`, error.message);
+                console.error(`[EmailService] Failed to send "${subject}":`, error.message);
                 return;
             }
 
-            console.log(`✉️  [EmailService] Sent "${subject}" → ${to} (id: ${data.id})`);
+            console.log(`[EmailService] Sent "${subject}" -> ${to} (id: ${data.id})`);
         } catch (err) {
-            // Never let an email error crash a request
-            console.error(`❌ [EmailService] Unexpected error sending "${subject}":`, err.message);
+            console.error(`[EmailService] Unexpected error sending "${subject}":`, err.message);
         }
     }
 
-    // ─── Orders ────────────────────────────────────────────────────────────────
-
-    /**
-     * Send order confirmation email right after checkout.
-     *
-     * @param {Object} order - { email, firstName, orderNumber, trackingToken, totalAmount, shippingCost, items }
-     */
+    // Orders
     async sendOrderConfirmation(order) {
         await this.#send({
             to: this.#resolveRecipient(order.email),
-            subject: `Pedido confirmado — ${order.orderNumber} | KAS Supplements`,
+            subject: `Pedido confirmado - ${order.orderNumber} | STF`,
             html: orderConfirmationTemplate(order),
             idempotencyKey: `order-confirmation/${order.orderNumber}`,
         });
     }
 
-    /**
-     * Send shipped notification when an order status changes to SHIPPED.
-     *
-     * @param {Object} order - { email, firstName, orderNumber, trackingToken, shippingTrackNo?, shippingCarrier? }
-     */
     async sendOrderShipped(order) {
         await this.#send({
             to: this.#resolveRecipient(order.email),
-            subject: `Tu pedido ${order.orderNumber} está en camino 🚚 | KAS Supplements`,
+            subject: `Tu pedido ${order.orderNumber} esta en camino | STF`,
             html: orderShippedTemplate(order),
             idempotencyKey: `order-shipped/${order.orderNumber}`,
         });
     }
 
-    /**
-     * Send cancellation confirmation when the customer cancels a PENDING order.
-     *
-     * @param {Object} order - { email, firstName, orderNumber, reason? }
-     */
+    async sendOrderDelivered(order) {
+        await this.#send({
+            to: this.#resolveRecipient(order.email),
+            subject: `Pedido entregado - ${order.orderNumber} | STF`,
+            html: orderDeliveredTemplate(order),
+            idempotencyKey: `order-delivered/${order.orderNumber}`,
+        });
+    }
+
     async sendOrderCancelled(order) {
         await this.#send({
             to: this.#resolveRecipient(order.email),
-            subject: `Tu pedido ${order.orderNumber} ha sido cancelado | KAS Supplements`,
+            subject: `Tu pedido ${order.orderNumber} fue cancelado | STF`,
             html: orderCancelledTemplate(order),
             idempotencyKey: `order-cancelled/${order.orderNumber}`,
         });
     }
 
-    // ─── Auth ──────────────────────────────────────────────────────────────────
-
-    /**
-     * Send welcome email after a new user registers.
-     *
-     * @param {Object} user - { email, firstName }
-     */
+    // Auth
     async sendWelcome(user) {
         await this.#send({
             to: this.#resolveRecipient(user.email),
-            subject: '¡Bienvenido a KAS Supplements! 💪',
+            subject: 'Bienvenido a STF',
             html: welcomeTemplate({ firstName: user.firstName }),
             idempotencyKey: `welcome/${user.email}`,
         });
     }
 
-    // ─── Subscriptions ─────────────────────────────────────────────────────────
-
-    /**
-     * Send activation email when a subscription transitions to AUTHORIZED.
-     *
-     * @param {Object} data - { email, firstName, productName, billingDays, amount, nextBillingDate }
-     */
+    // Subscriptions
     async sendSubscriptionActivated(data) {
         await this.#send({
             to: this.#resolveRecipient(data.email),
-            subject: `¡Tu suscripción a ${data.productName} está activa! 🎉 | KAS Supplements`,
+            subject: `Tu suscripcion a ${data.productName} esta activa | STF`,
             html: subscriptionActivatedTemplate(data),
             idempotencyKey: `subscription-activated/${data.subscriptionId}`,
         });
     }
 
-    /**
-     * Send cancellation confirmation when a subscription is cancelled.
-     *
-     * @param {Object} data - { email, firstName, productName, billingDays, subscriptionId }
-     */
+    async sendSubscriptionPaused(data) {
+        await this.#send({
+            to: this.#resolveRecipient(data.email),
+            subject: `Tu suscripcion a ${data.productName} esta en pausa | STF`,
+            html: subscriptionPausedTemplate(data),
+            idempotencyKey: `subscription-paused/${data.subscriptionId}`,
+        });
+    }
+
     async sendSubscriptionCancelled(data) {
         await this.#send({
             to: this.#resolveRecipient(data.email),
-            subject: `Tu suscripción a ${data.productName} ha sido cancelada | KAS Supplements`,
+            subject: `Tu suscripcion a ${data.productName} ha sido cancelada | STF`,
             html: subscriptionCancelledTemplate(data),
             idempotencyKey: `subscription-cancelled/${data.subscriptionId}`,
         });
     }
 
-    /**
-     * Send charge receipt when a recurring payment is successfully processed.
-     *
-     * @param {Object} data - { email, firstName, productName, amount, nextBillingDate, billingDays, subscriptionId, mpPaymentId }
-     */
     async sendSubscriptionCharged(data) {
         await this.#send({
             to: this.#resolveRecipient(data.email),
-            subject: `Cobro procesado — ${data.productName} | KAS Supplements`,
+            subject: `Cobro procesado - ${data.productName} | STF`,
             html: subscriptionChargedTemplate(data),
             idempotencyKey: `subscription-charged/${data.mpPaymentId}`,
         });
     }
 
-    // ─── Returns ───────────────────────────────────────────────────────────────
+    async sendSubscriptionUpcomingChargeReminder(data) {
+        const keyDate = data.nextBillingDate
+            ? new Date(data.nextBillingDate).toISOString().slice(0, 10)
+            : 'unscheduled';
 
-    /**
-     * Send confirmation when a return request is received.
-     *
-     * @param {Object} data - { email, firstName, orderNumber, returnType, description }
-     */
+        await this.#send({
+            to: this.#resolveRecipient(data.email),
+            subject: `Recordatorio de cobro - ${data.productName} | STF`,
+            html: subscriptionBillingReminderTemplate(data),
+            idempotencyKey: `subscription-reminder/${data.subscriptionId}/${keyDate}`,
+        });
+    }
+
+    async sendSubscriptionChargeFailed(data) {
+        const eventRef = data.eventId || data.paymentStatus || 'unknown';
+        await this.#send({
+            to: this.#resolveRecipient(data.email),
+            subject: `No se pudo cobrar tu suscripcion de ${data.productName} | STF`,
+            html: subscriptionChargeFailedTemplate(data),
+            idempotencyKey: `subscription-charge-failed/${data.subscriptionId}/${eventRef}`,
+        });
+    }
+
+    // Returns
     async sendReturnRequestReceived(data) {
         await this.#send({
             to: this.#resolveRecipient(data.email),
-            subject: `Solicitud de devolución recibida — ${data.orderNumber} | KAS Supplements`,
+            subject: `Solicitud de devolucion recibida - ${data.orderNumber} | STF`,
             html: returnRequestReceivedTemplate(data),
             idempotencyKey: `return-request/${data.orderNumber}`,
+        });
+    }
+
+    async sendReturnStatusUpdated(data) {
+        await this.#send({
+            to: this.#resolveRecipient(data.email),
+            subject: `Actualizacion de devolucion - ${data.orderNumber} | STF`,
+            html: returnStatusUpdatedTemplate(data),
+            idempotencyKey: `return-status/${data.orderNumber}/${data.status}`,
         });
     }
 }

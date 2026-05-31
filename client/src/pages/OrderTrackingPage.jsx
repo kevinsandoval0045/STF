@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { trackOrder } from '../services/apiService.js';
+import { createReturnRequest, trackOrder } from '../services/apiService.js';
 import { formatPrice, formatDate } from '../utils/formatters.js';
-import { Search, Package, Loader2, MapPin, Clock, FileDown } from 'lucide-react';
+import { Search, Package, Loader2, MapPin, Clock, FileDown, RotateCcw } from 'lucide-react';
 import SEO from '../components/SEO.jsx';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
@@ -27,6 +27,10 @@ export default function OrderTrackingPage() {
     const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [returnType, setReturnType] = useState('CHANGE_OF_MIND');
+    const [returnDescription, setReturnDescription] = useState('');
+    const [submittingReturn, setSubmittingReturn] = useState(false);
+    const [returnFeedback, setReturnFeedback] = useState(null);
 
     const handleTrack = async (e) => {
         e.preventDefault();
@@ -35,6 +39,9 @@ export default function OrderTrackingPage() {
         setLoading(true);
         setError(null);
         setOrder(null);
+        setReturnFeedback(null);
+        setReturnDescription('');
+        setReturnType('CHANGE_OF_MIND');
 
         try {
             const data = await trackOrder(token.trim());
@@ -47,6 +54,47 @@ export default function OrderTrackingPage() {
     };
 
     const statusInfo = order ? STATUS_LABELS[order.status] || { label: order.status, color: 'bg-gray-100 text-gray-800' } : null;
+    const canRequestReturn = order && ['DELIVERED', 'COMPLETED'].includes(order.status);
+    const returnAlreadyRequested = order && ['RETURN_REQUESTED', 'RETURNED'].includes(order.status);
+
+    const handleReturnSubmit = async (e) => {
+        e.preventDefault();
+        if (!order?.id) {
+            setReturnFeedback({
+                type: 'error',
+                message: 'No se encontró el identificador del pedido para solicitar devolución.',
+            });
+            return;
+        }
+
+        setSubmittingReturn(true);
+        setReturnFeedback(null);
+
+        try {
+            await createReturnRequest({
+                orderId: order.id,
+                trackingToken: token.trim(),
+                type: returnType,
+                description: returnDescription.trim(),
+            });
+
+            setReturnFeedback({
+                type: 'success',
+                message: 'Solicitud de devolución enviada correctamente.',
+            });
+            setOrder((prev) => (prev ? { ...prev, status: 'RETURN_REQUESTED' } : prev));
+            setReturnDescription('');
+        } catch (err) {
+            const message =
+                err?.response?.data?.error?.message ||
+                err?.response?.data?.error ||
+                'No se pudo enviar la solicitud de devolución. Intenta nuevamente.';
+
+            setReturnFeedback({ type: 'error', message });
+        } finally {
+            setSubmittingReturn(false);
+        }
+    };
 
     return (
         <div className="max-w-2xl mx-auto px-4 py-12">
@@ -173,6 +221,75 @@ export default function OrderTrackingPage() {
                                     </div>
                                 ))}
                             </div>
+                        </div>
+                    )}
+
+                    {/* Return request */}
+                    {(canRequestReturn || returnAlreadyRequested) && (
+                        <div className="p-6 border-t">
+                            <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                                <RotateCcw className="w-4 h-4" /> Solicitar devolución
+                            </h3>
+
+                            {returnAlreadyRequested && (
+                                <div className="bg-orange-50 border border-orange-200 text-orange-700 px-4 py-3 rounded-lg text-sm">
+                                    Este pedido ya tiene una devolución en proceso o completada.
+                                </div>
+                            )}
+
+                            {canRequestReturn && (
+                                <form onSubmit={handleReturnSubmit} className="space-y-3">
+                                    <div>
+                                        <label className="block text-sm text-gray-600 mb-1">Motivo</label>
+                                        <select
+                                            value={returnType}
+                                            onChange={(e) => setReturnType(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg
+                                                       focus:ring-2 focus:ring-brand-red focus:border-transparent"
+                                        >
+                                            <option value="CHANGE_OF_MIND">Cambio de opinión</option>
+                                            <option value="DEFECTIVE_PRODUCT">Producto defectuoso</option>
+                                            <option value="WRONG_PRODUCT">Producto equivocado</option>
+                                            <option value="OTHER">Otro</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm text-gray-600 mb-1">Descripción</label>
+                                        <textarea
+                                            value={returnDescription}
+                                            onChange={(e) => setReturnDescription(e.target.value)}
+                                            minLength={10}
+                                            required
+                                            rows={3}
+                                            placeholder="Describe brevemente el motivo de la devolución..."
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg
+                                                       focus:ring-2 focus:ring-brand-red focus:border-transparent"
+                                        />
+                                    </div>
+
+                                    {returnFeedback && (
+                                        <div
+                                            className={`px-3 py-2 rounded-lg text-sm ${
+                                                returnFeedback.type === 'success'
+                                                    ? 'bg-green-50 border border-green-200 text-green-700'
+                                                    : 'bg-red-50 border border-red-200 text-red-700'
+                                            }`}
+                                        >
+                                            {returnFeedback.message}
+                                        </div>
+                                    )}
+
+                                    <button
+                                        type="submit"
+                                        disabled={submittingReturn}
+                                        className="btn-primary inline-flex items-center gap-2 disabled:opacity-60"
+                                    >
+                                        {submittingReturn && <Loader2 className="w-4 h-4 animate-spin" />}
+                                        Enviar solicitud
+                                    </button>
+                                </form>
+                            )}
                         </div>
                     )}
                 </div>
